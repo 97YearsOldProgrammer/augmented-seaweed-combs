@@ -55,7 +55,7 @@ paper/           LaTeX source for the paper
   figures/       TikZ figures (B&W)
 lean/            Lean 4 formal proofs
   lakefile.lean  Build configuration (pulls Mathlib)
-  FlashAlignment/
+  AugmentedSeaweed/
     *.lean       Individual proof files
 ```
 

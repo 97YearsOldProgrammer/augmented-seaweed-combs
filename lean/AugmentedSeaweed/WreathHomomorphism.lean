@@ -1,5 +1,5 @@
 import Mathlib.Tactic
-import FlashAlignment.AffineMonoid
+import AugmentedSeaweed.AffineMonoid
 
 /-!
 # Wreath product composition law

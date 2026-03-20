@@ -1,5 +1,5 @@
 import Mathlib.Tactic
-import FlashAlignment.Basic
+import AugmentedSeaweed.Basic
 
 /-!
 # Observer property: depth does not affect labels
