@@ -3,3 +3,7 @@ import AugmentedSeaweed.AffineMonoid
 import AugmentedSeaweed.TropicalCarry
 import AugmentedSeaweed.Observer
 import AugmentedSeaweed.WreathHomomorphism
+import AugmentedSeaweed.BandSufficiency
+import AugmentedSeaweed.CorrectionScore
+import AugmentedSeaweed.SplitScoring
+import AugmentedSeaweed.DepthExcess
