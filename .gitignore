@@ -1,0 +1,14 @@
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+missfont.log
+
+# Lean build cache
+lean/.lake/
+
+# OS
+.DS_Store

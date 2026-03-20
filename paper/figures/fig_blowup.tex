@@ -1,0 +1,77 @@
+% Sentinel blow-up: c -> $c  (g=1, nu=2)
+% Black-and-white only. Original string above, expanded below.
+\begin{tikzpicture}[
+    >=Stealth,
+    origcell/.style={
+        draw=gray!50, line width=0.4pt,
+        minimum width=1.0cm, minimum height=0.75cm,
+        font=\normalsize, inner sep=0pt,
+    },
+    sentcell/.style={
+        draw=black, line width=0.4pt, fill=gray!8,
+        minimum width=1.0cm, minimum height=0.75cm,
+        font=\normalsize, inner sep=0pt,
+    },
+]
+
+\def\cellstep{1.1}  % horizontal spacing between cells
+
+% ── Original string ─────────────────────────────────────────
+\node[font=\small, anchor=east] at (-0.4, 1.2) {Original:};
+\foreach \ch [count=\i from 0] in {A, C, G, T} {
+    \node[origcell] (orig\i) at ({\i*\cellstep + 0.6}, 1.2) {\ch};
+}
+% Position indices
+\foreach \i in {0,...,3} {
+    \node[font=\tiny, gray!50, above=3pt] at ({\i*\cellstep + 0.6}, 1.6) {\i};
+}
+
+% ── Arrow ───────────────────────────────────────────────────
+\draw[-{Stealth[length=5pt]}, line width=0.5pt, gray!60]
+    (2.5, 0.6) -- (4.2, 0.0)
+    node[midway, right, font=\scriptsize, xshift=3pt]
+    {$c \to \$\,c$};
+
+% ── Expanded string ─────────────────────────────────────────
+\node[font=\small, anchor=east] at (-0.4, -0.7) {Expanded:};
+\foreach \ch [count=\i from 0] in {\$, A, \$, C, \$, G, \$, T} {
+    \pgfmathtruncatemacro{\issentinel}{mod(\i, 2) == 0 ? 1 : 0}
+    \ifnum\issentinel=1
+        \node[sentcell] (exp\i) at ({\i*\cellstep + 0.6}, -0.7) {\ch};
+    \else
+        \node[origcell] (exp\i) at ({\i*\cellstep + 0.6}, -0.7) {\ch};
+    \fi
+}
+% Position indices
+\foreach \i in {0,...,7} {
+    \node[font=\tiny, gray!50, above=3pt] at ({\i*\cellstep + 0.6}, -0.3) {\i};
+}
+
+% ── Crossing type braces: sentinel positions (even) ─────────
+\foreach \i in {0, 2, 4, 6} {
+    \draw[decorate, decoration={brace, amplitude=4pt, mirror},
+          line width=0.3pt, black]
+        ([yshift=-6pt]exp\i.south west) -- ([yshift=-6pt]exp\i.south east);
+    \node[font=\scriptsize\bfseries]
+        at ({\i*\cellstep + 0.6}, -1.45) {S};
+}
+
+% ── Crossing type braces: original positions (odd) ──────────
+\foreach \i in {1, 3, 5, 7} {
+    \draw[decorate, decoration={brace, amplitude=4pt, mirror},
+          line width=0.3pt, gray!60]
+        ([yshift=-6pt]exp\i.south west) -- ([yshift=-6pt]exp\i.south east);
+    \node[font=\scriptsize\bfseries, gray!60]
+        at ({\i*\cellstep + 0.6}, -1.45) {C};
+}
+
+% ── Legend explaining S and C ───────────────────────────────
+\node[font=\small, anchor=west] at (-0.2, -1.9) {%
+    \textbf{S}\,=\,structural
+    (sentinel \$ always mismatches)
+    \qquad
+    \textbf{C}\,=\,conditional
+    (crossing iff $a_r = b_c$)
+};
+
+\end{tikzpicture}
