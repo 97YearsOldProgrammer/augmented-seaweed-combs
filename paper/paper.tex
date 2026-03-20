@@ -36,7 +36,7 @@
 \maketitle
 
 \begin{abstract}
-Tiskin's semi-local string comparison framework encodes all $\Theta(mn)$ LCS scores via a permutation composable in $\bigO(n \log n)$ time; the Krusche distance column projects this to $n$ integers composable in $\bigO(n)$ per query character.  Gap-penalized scoring, however, requires the sentinel blow-up---replacing each character with $\$^g c$---at a $\nu^2$ cost in string length.  We resolve the affine gap scoring problem by introducing the \emph{augmented seaweed comb}: each wire carries a gap depth counter that resets on match and increments on mismatch, and the augmented output determines the complete Gotoh DP state with zero ambiguity.  The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$, with $\bigO(n \log n)$ composition.  We establish an exact bijection with the sentinel blow-up, achieving $2\times$ storage overhead versus $\nu\times$, and prove that the semi-local affine gap score matrix is not Monge at any conditioning level, confirming the wreath product is necessary.
+Affine gap penalties are central to DNA, RNA, and protein sequence alignment, yet incorporating them into Tiskin's composable semi-local string comparison framework has required a costly sentinel blow-up ($\nu^2$ expansion in string length).  We resolve this by introducing the \emph{augmented seaweed comb}: each wire of the Krusche comb carries a gap depth counter that resets on match and increments on mismatch.  The augmented output determines the complete Gotoh DP state---all three matrices $H$, $E$, $F$---with zero ambiguity.  The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$, with $\bigO(n \log n)$ composition.  We establish an exact bijection with the sentinel blow-up, achieving $2\times$ storage overhead versus $\nu\times$, and prove that the semi-local affine gap score matrix is not Monge, confirming the wreath product extension is necessary.
 \end{abstract}
 
 \section{Introduction}\label{sec:intro}
@@ -522,14 +522,14 @@ the LCS would be higher).  Each off-diagonal crossing therefore
 costs exactly one gap opening, and the gap-penalized score is
 $\LCS - \varepsilon$.
 
-For part~(3), consider $A_1 = \texttt{0110}$,
-$A_2 = \texttt{0011}$, $B = \texttt{10101010}$ with
-$g_o = 3$, $g_e = 1$.  Both have $\LCS = 3$ and diagonal
+For part~(3), consider $A_1 = \texttt{0010}$,
+$A_2 = \texttt{0100}$, $B = \texttt{00011}$ with
+$g_o = 2$, $g_e = 1$.  Both have $\LCS = 3$ and diagonal
 match count~$2$, giving $\varepsilon = 1$.  However, the
-Gotoh~DP gives $\mathrm{gap\_score}(A_1, B) = 2$ while
-$\mathrm{gap\_score}(A_2, B) = 3$, because $A_2$'s
+Gotoh~DP gives $\mathrm{gap\_score}(A_1, B) = 3$ while
+$\mathrm{gap\_score}(A_2, B) = 2$, because $A_1$'s
 off-diagonal crossing can be absorbed into the diagonal
-alignment without opening a gap.
+alignment without opening a new gap, while $A_2$'s cannot.
 \end{proof}
 
 \begin{proposition}[$\varepsilon$-band sufficiency]
@@ -659,7 +659,7 @@ $S(i,j) = \mathrm{affine\_gap}(A[i{:}], B[{:}j])$
 for $(i,j) \in \{0,1,2\} \times \{0,1,2,3,4\}$ is:
 \[
   S = \begin{pmatrix}
-    0 & -2 & 0 & 1 & 2 \\
+    0 & -2 & 1 & 1 & 2 \\
     0 & 0 & 0 & 0 & 1 \\
     0 & 0 & 0 & 0 & 0
   \end{pmatrix}.
