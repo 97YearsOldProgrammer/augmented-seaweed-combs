@@ -3,7 +3,7 @@
 Companion repository for the paper:
 
 > **Semi-Local Affine Gap Scoring via Augmented Seaweed Combs**
-> Gong Chen (UC Davis Genome Center)
+> Gong Chen
 
 **Paper:** [`paper/paper.pdf`](paper/paper.pdf)
 
