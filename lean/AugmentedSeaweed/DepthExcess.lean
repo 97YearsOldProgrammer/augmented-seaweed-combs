@@ -165,39 +165,47 @@ theorem matched_wire_depth (f : AffNat)
     (_h_matched : f.slope = ⟨0, by omega⟩) :
     f.apply 0 = f.intercept := depth_eq_affine_intercept f
 
-/-! ## The depth-excess conjecture
+/-! ## Depth-excess independence (resolved negative result)
 
-### Statement
+### Original conjecture (DISPROVED)
 
-For a seaweed comb on strings a[0..m-1] and b[0..n-1], let p be
-the optimal alignment position (maximizing LCS(a, b[p..p+m-1])).
+Can excess(p) = LCS(p) - diag(p) be extracted from the augmented
+comb's depth_col values alone?
 
-**Conjecture**: there exists a function Φ of the depth_col values
-at the boundary such that:
+### Exhaustive computational disproof
 
-  Φ(depth_col, p) = excess(p) = LCS(p) - diag(p)
+Tested all binary strings with m ≤ 5 (single-window augmented comb):
 
-where diag(p) = #{i : a[i] = b[p+i]} is the diagonal match count.
+- `excess = sum(depth_col)`: fails 83% of cases
+- `excess ≤ sum(depth_col)`: fails (34 counterexamples, e.g.,
+    a="ABAA" b="BABA": excess=2, depth_col=[0,0,1,0], sum=1)
+- `excess ≤ max(depth_col)`: fails (102 counterexamples)
+- `excess = f(crossed_wires, zeros, ...)`: all tested formulas fail
+- `depth=0 ↔ diagonal match`: no correlation (294 off-diagonal zeros
+    vs 182 diagonal zeros among crossed wires)
 
-### What we know
+No function of depth_col (sum, max, zero-count, crossed-wire
+combinations) equals or bounds excess from above.
 
-1. LCS(p) is extractable from d_col via the count transform (Krusche).
-2. diag(p) is an O(m) Hamming count, currently computed separately.
-3. depth_col[j] = (composed affine function for wire j).intercept
-   = mismatches since last match on wire j.
-4. At the true junction, excess is low (clean diagonal alignment).
-   At false peaks, excess is high (gap-inflated LCS).
-5. The correction score max(LCS - go, diag) = LCS - min(go, excess)
-   uses excess as a bounded penalty.
+### Why they are independent
 
-### What would resolve it
+Depth tracks per-WIRE gap history (mismatches since last match on
+the wire currently at position j). Excess is a GLOBAL alignment
+property (total off-diagonal matches in the optimal LCS). A wire
+can have depth 0 (recent match) while contributing to an off-diagonal
+LCS match, and vice versa.
 
-Show that for the optimal alignment at position p:
-  Σ_{i ∈ matched_wires(p)} depth_col[π(i)] or some weighted variant
-  equals or bounds excess(p) from above.
+### Consequence: the correction formula is genuinely hybrid
 
-This would mean the augmented comb's wreath product output
-(permutation + depth) encodes BOTH the LCS score AND the quality
-of that score (how gap-dependent it is), without any separate
-Hamming computation.
+The correction score max(LCS - go, diag) combines TWO independent
+information sources that the augmented comb cannot unify:
+
+1. **LCS from d_col** — extractable via count transform (Krusche)
+2. **diag from Hamming count** — requires separate O(m) scan
+
+The augmented comb's depth provides Gotoh-equivalent scoring
+(via the wreath product S_n ≀ Aff(ℤ≥0)), but NOT the correction
+formula's excess term. The correction formula is algebraically
+distinct from both LCS and Gotoh — it is a new scoring function
+that fuses semi-local alignment with local sequence comparison.
 -/
