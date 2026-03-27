@@ -862,35 +862,43 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
     (hinv : ColSimInv d_col_k d_col_orig b a_prev ch k) :
     let step := colFoldStep ch b (d_col_k, d_row_k) k
     ColSimInv step.1 d_col_orig b a_prev ch (k + 1) := by
-  -- This is the deep content of Tiskin 2022, Theorem 4.10.
-  -- The proof must show two things:
-  --
-  -- (1) For Part A at the NEW position k: for every window [s,s+w) with s ≤ k < s+w,
-  --     show d_col_new[k] > k-s ↔ dp_new_win[k-s+1] > dp_new_win[k-s]
-  --     where d_col_new[k] comes from colStep and dp_new_win is the windowed DP.
-  --
-  --     This requires relating d_row_k (the global running value from the comb)
-  --     to the DP for EACH window [s,s+w). The key: d_row_k's comparison with
-  --     d_col_orig[k] (from Part C of the invariant) determines the colStep outcome,
-  --     and this outcome must match the DP cell for every window simultaneously.
-  --
-  -- (2) For Part C: positions j > k remain unchanged (follows from List.set at k).
-  --
-  -- (3) For Part A at OLD positions j < k: the set at position k doesn't change
-  --     d_col values at other positions, so the existing Part A is preserved.
-  --
-  -- The core difficulty is (1): relating a single colStep outcome (determined by
-  -- d_row_k vs d_col_orig[k] vs ch vs b[k]) to the DP cell update for every
-  -- possible window containing column k. This is true because:
-  -- - The colStep match/mismatch/swap decision depends only on ch vs b[k],
-  --   which is the SAME for all windows containing column k.
-  -- - The crossing threshold d_col_new[k] > k-s has a window-dependent threshold k-s,
-  --   but the VALUE d_col_new[k] is the same for all windows.
-  -- - The DP cell update uses prev[k-s] and dp_new[k-s], which differ per window,
-  --   but the DIRECTION of the inequality dp_new[k-s+1] > dp_new[k-s] is determined
-  --   by whether the DP value increases, which corresponds to the crossing condition.
-  --
-  -- Verified empirically on 174K cases with 0 failures.
+  /- SORRY STATUS: Attempted 2026-03-27.
+     Strategies tried:
+     1. Structural analysis of the proof obligation:
+        (a) Part C (untouched positions j >= k+1) is straightforward: colFoldStep sets
+            d_col at position k via List.set, which doesn't affect positions j != k.
+        (b) Part A for OLD positions (s+j < k) is also straightforward: List.set at k
+            doesn't change d_col at positions s+j < k.
+        (c) Part A for the NEW position k is the core difficulty: for EVERY window
+            [s,s+w) containing k, must show d_col_new[k] > k-s iff dp_new[k-s+1] > dp_new[k-s].
+
+     2. Key structural obstacle identified: The current ColSimInv only tracks Parts A and C.
+        The missing Part B (d_row invariant) is needed for the inductive step:
+          Part B: d_row_k > k-s iff dp_new[k-s+1] > dp_old[k-s+1]
+        Without Part B, we cannot relate d_row_k to the DP values, so we cannot determine
+        whether colStep produces a match/swap result that corresponds to the DP cell update.
+
+     3. Resolution path: Strengthen ColSimInv to include Part B. This requires:
+        - Redefining ColSimInv with a third conjunct about d_row
+        - Re-proving colSimInv_base with the strengthened invariant
+        - The inductive step then has access to d_row relationships
+        - Downstream lemma colSimInv_to_encodes needs updating (only uses Part A at k=n)
+        Estimated effort: ~300 lines of new/modified helper lemmas.
+
+     4. Additional difficulty: even with Part B, relating d_row to dp_old requires
+        understanding how the DP row evolves across windows of different widths.
+        The windowed DP uses b[s:s+w] while the comb processes the full b. The
+        correspondence holds because b[k] is the same character in all windows
+        containing position k, so match/mismatch is window-independent.
+
+     5. ATP (Aristotle) was not attempted because the proof requires invariant
+        strengthening (a refactoring change), not just tactic discovery.
+
+     This is the deep content of Tiskin 2022, Theorem 4.10.
+     Verified empirically on 174K cases with 0 failures.
+     See D-06: this remains an unproved claim. The theorem IS correct, but the
+     current formalization's invariant is too weak for the inductive step.
+     See D-07: Priority is effective algorithms, not mechanical proof completeness. -/
   sorry
 
 /-! ### The Row Step Theorem -/
