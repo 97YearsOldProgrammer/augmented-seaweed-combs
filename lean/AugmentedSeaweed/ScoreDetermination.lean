@@ -284,7 +284,35 @@ theorem score_determination (a b : List ℕ) (go ge : ℤ)
     (h_go_pos : go ≥ 1) (h_ge_pos : ge ≥ 1)
     (h_same_len : a.length = b.length) :
     correctionScoreDP a b go ge = gotohGlobalScore a b go ge := by
-  sorry
+  /- SORRY STATUS: Attempted 2026-03-27.
+     Strategies tried:
+     1. Unfold + case split: epsilon > go case closed by rfl (definitional).
+        The epsilon <= go case reduces to: diagCount a b = gotohGlobalScore a b go ge.
+     2. The abstract correction_tier2 (CorrectionFormula.lean) proves opt_score = diag
+        given abstract crossing/gap cost decomposition, but connecting it to the concrete
+        Gotoh DP requires two missing bridge lemmas:
+        (a) gotoh_ge_diag: gotohGlobalScore a b go ge >= diagCount a b
+            (diagonal alignment is feasible in Gotoh DP, scoring at least diag matches)
+        (b) gotoh_le_diag_when_eps_small: when epsilon <= go, gotohGlobalScore <= diagCount
+            (any crossing of the diagonal costs >= go in gap penalties, net gain <= 0)
+     3. Both bridge lemmas require inductive proofs over the Gotoh DP fold structure
+        (gotohProcessRow / gotohFinalRow), relating alignment paths to their gap costs.
+        This is ~200-300 lines of helper lemmas not yet developed.
+     4. ATP (Aristotle) was considered but the proof requires structural induction
+        over lists with complex fold computations, which is beyond current ATP capability.
+     The epsilon > go case IS proved (rfl). Only the epsilon <= go case remains.
+     Empirically verified on 17+ concrete test cases via native_decide.
+     See D-06: this remains an unproved claim (Tiers 1-2 optimality). -/
+  unfold correctionScoreDP
+  simp only
+  split
+  · -- Case: epsilon <= go. Need: diagCount a b = gotohGlobalScore a b go ge
+    -- This requires proving that when LCS - diag <= go, the Gotoh DP score
+    -- equals diag. The abstract argument is in correction_tier2, but bridging
+    -- to the concrete Gotoh DP computation requires ~200 lines of helper lemmas.
+    sorry
+  · -- Case: epsilon > go. Correction formula falls through to gotohGlobalScore.
+    rfl
 
 /-! ## Corollaries -/
 
