@@ -13,7 +13,7 @@
 
   Main results:
   - gotohGlobalScore: Gotoh DP score H[m][n]
-  - correctionScore: score via the three-tier correction formula
+  - correctionScoreDP: score via the three-tier correction formula
   - score_determination: the two agree (verified on 12+ concrete inputs)
   - semi_local_score_det: windowed version (verified on all windows)
 
@@ -82,7 +82,7 @@ as fallback (in practice, this is epsilon-banded for O(m*epsilon) cost).
 /-- Correction formula score for aligning `a` against `b`.
     Uses LCS DP and diagonal match count to classify into tiers.
     Falls back to Gotoh DP for Tier 3. -/
-def correctionScore (a b : List ℕ) (go ge : ℤ) : ℤ :=
+def correctionScoreDP (a b : List ℕ) (go ge : ℤ) : ℤ :=
   let lcs := (lcsDP a b : ℤ)
   let diag := (diagCount a b : ℤ)
   let epsilon := lcs - diag
@@ -98,89 +98,89 @@ and multi-letter alphabets. -/
 
 /-- Test 1: exact match, epsilon = 0, score = 3. -/
 theorem score_det_test1 :
-    correctionScore [0,1,0] [0,1,0] 2 1 =
+    correctionScoreDP [0,1,0] [0,1,0] 2 1 =
     gotohGlobalScore [0,1,0] [0,1,0] 2 1 := by native_decide
 
 /-- Test 2: exact match, epsilon = 0, score = 4. -/
 theorem score_det_test2 :
-    correctionScore [0,1,0,1] [0,1,0,1] 1 1 =
+    correctionScoreDP [0,1,0,1] [0,1,0,1] 1 1 =
     gotohGlobalScore [0,1,0,1] [0,1,0,1] 1 1 := by native_decide
 
 /-- Test 3: 1 substitution, LCS = diag = 2, epsilon = 0. -/
 theorem score_det_test3 :
-    correctionScore [0,1,0] [0,0,0] 2 1 =
+    correctionScoreDP [0,1,0] [0,0,0] 2 1 =
     gotohGlobalScore [0,1,0] [0,0,0] 2 1 := by native_decide
 
 /-- Test 4: shifted pattern (ABAB vs BABA), diag = 0, LCS = 3, epsilon = 3. -/
 theorem score_det_test4 :
-    correctionScore [0,1,0,1] [1,0,1,0] 1 1 =
+    correctionScoreDP [0,1,0,1] [1,0,1,0] 1 1 =
     gotohGlobalScore [0,1,0,1] [1,0,1,0] 1 1 := by native_decide
 
 /-- Test 5: rotated pattern (AAAB vs BAAA), diag = 2, LCS = 3, epsilon = 1. -/
 theorem score_det_test5 :
-    correctionScore [0,0,0,1] [1,0,0,0] 1 1 =
+    correctionScoreDP [0,0,0,1] [1,0,0,0] 1 1 =
     gotohGlobalScore [0,0,0,1] [1,0,0,0] 1 1 := by native_decide
 
 /-- Test 6: 3-letter alphabet, swapped middle. -/
 theorem score_det_test6 :
-    correctionScore [0,1,2,0] [0,2,1,0] 2 1 =
+    correctionScoreDP [0,1,2,0] [0,2,1,0] 2 1 =
     gotohGlobalScore [0,1,2,0] [0,2,1,0] 2 1 := by native_decide
 
 /-- Test 7: longer exact match (5 chars). -/
 theorem score_det_test7 :
-    correctionScore [0,1,0,1,0] [0,1,0,1,0] 2 1 =
+    correctionScoreDP [0,1,0,1,0] [0,1,0,1,0] 2 1 =
     gotohGlobalScore [0,1,0,1,0] [0,1,0,1,0] 2 1 := by native_decide
 
 /-- Test 8: 1 substitution in longer string. -/
 theorem score_det_test8 :
-    correctionScore [0,1,0,1,0] [0,1,1,1,0] 2 1 =
+    correctionScoreDP [0,1,0,1,0] [0,1,1,1,0] 2 1 =
     gotohGlobalScore [0,1,0,1,0] [0,1,1,1,0] 2 1 := by native_decide
 
 /-- Test 9: all mismatches (score = 0). -/
 theorem score_det_test9 :
-    correctionScore [0,0,0] [1,1,1] 1 1 =
+    correctionScoreDP [0,0,0] [1,1,1] 1 1 =
     gotohGlobalScore [0,0,0] [1,1,1] 1 1 := by native_decide
 
 /-- Test 10: single character match. -/
 theorem score_det_test10 :
-    correctionScore [0] [0] 1 1 =
+    correctionScoreDP [0] [0] 1 1 =
     gotohGlobalScore [0] [0] 1 1 := by native_decide
 
 /-- Test 11: single character mismatch. -/
 theorem score_det_test11 :
-    correctionScore [0] [1] 1 1 =
+    correctionScoreDP [0] [1] 1 1 =
     gotohGlobalScore [0] [1] 1 1 := by native_decide
 
 /-- Test 12: two chars, one match. -/
 theorem score_det_test12 :
-    correctionScore [0,1] [0,0] 1 1 =
+    correctionScoreDP [0,1] [0,0] 1 1 =
     gotohGlobalScore [0,1] [0,0] 1 1 := by native_decide
 
 /-! ## Additional Verification: Various Gap Penalties -/
 
 /-- Same input, different gap penalties: go=1. -/
 theorem score_det_gap1 :
-    correctionScore [0,1,0,1] [1,0,1,0] 1 1 =
+    correctionScoreDP [0,1,0,1] [1,0,1,0] 1 1 =
     gotohGlobalScore [0,1,0,1] [1,0,1,0] 1 1 := by native_decide
 
 /-- Same input, different gap penalties: go=2. -/
 theorem score_det_gap2 :
-    correctionScore [0,1,0,1] [1,0,1,0] 2 1 =
+    correctionScoreDP [0,1,0,1] [1,0,1,0] 2 1 =
     gotohGlobalScore [0,1,0,1] [1,0,1,0] 2 1 := by native_decide
 
 /-- Same input, different gap penalties: go=3. -/
 theorem score_det_gap3 :
-    correctionScore [0,1,0,1] [1,0,1,0] 3 1 =
+    correctionScoreDP [0,1,0,1] [1,0,1,0] 3 1 =
     gotohGlobalScore [0,1,0,1] [1,0,1,0] 3 1 := by native_decide
 
 /-- Same input, go=1, ge=2 (high extension penalty). -/
 theorem score_det_gap4 :
-    correctionScore [0,1,0,1] [1,0,1,0] 1 2 =
+    correctionScoreDP [0,1,0,1] [1,0,1,0] 1 2 =
     gotohGlobalScore [0,1,0,1] [1,0,1,0] 1 2 := by native_decide
 
 /-- Same input, go=2, ge=2. -/
 theorem score_det_gap5 :
-    correctionScore [0,1,0,1] [1,0,1,0] 2 2 =
+    correctionScoreDP [0,1,0,1] [1,0,1,0] 2 2 =
     gotohGlobalScore [0,1,0,1] [1,0,1,0] 2 2 := by native_decide
 
 /-! ## Semi-Local Score Determination
@@ -199,7 +199,7 @@ def gotohWindowScore (a b : List ℕ) (go ge : ℤ) (s : ℕ) : ℤ :=
 
 /-- Semi-local correction score: correction formula at window [s, s+m). -/
 def correctionWindowScore (a b : List ℕ) (go ge : ℤ) (s : ℕ) : ℤ :=
-  correctionScore a (b.drop s |>.take a.length) go ge
+  correctionScoreDP a (b.drop s |>.take a.length) go ge
 
 /-- Semi-local: a=[0,1] (m=2), b=[1,0,1,0] (n=4), go=1, ge=1.
     All 3 valid windows of width 2. -/
@@ -248,7 +248,7 @@ equals the Gotoh DP score for equal-length alignment.
 For any query `a` and reference `b` with `|a| = |b|`, gap open `go >= 1`,
 and gap extension `ge >= 1`:
 
-  correctionScore a b go ge = gotohGlobalScore a b go ge
+  correctionScoreDP a b go ge = gotohGlobalScore a b go ge
 
 The correction formula works as follows:
 1. Compute LCS via DP (or equivalently from comb d_col crossing count)
@@ -283,7 +283,7 @@ SCORE is.
 theorem score_determination (a b : List ℕ) (go ge : ℤ)
     (h_go_pos : go ≥ 1) (h_ge_pos : ge ≥ 1)
     (h_same_len : a.length = b.length) :
-    correctionScore a b go ge = gotohGlobalScore a b go ge := by
+    correctionScoreDP a b go ge = gotohGlobalScore a b go ge := by
   sorry
 
 /-! ## Corollaries -/
@@ -293,8 +293,8 @@ theorem score_determination (a b : List ℕ) (go ge : ℤ)
 theorem score_det_tier1 (a b : List ℕ) (go ge : ℤ)
     (h_go_pos : go ≥ 1)
     (h_eps_zero : lcsDP a b = diagCount a b) :
-    correctionScore a b go ge = (diagCount a b : ℤ) := by
-  unfold correctionScore
+    correctionScoreDP a b go ge = (diagCount a b : ℤ) := by
+  unfold correctionScoreDP
   simp only
   have h_eps : (lcsDP a b : ℤ) - (diagCount a b : ℤ) = 0 := by
     rw [h_eps_zero]; simp
@@ -303,11 +303,11 @@ theorem score_det_tier1 (a b : List ℕ) (go ge : ℤ)
   simp [h0]
 
 /-- **Tier 3 Corollary**: When epsilon > go, correction falls back to Gotoh DP.
-    This is definitionally true (by the if-then-else in correctionScore). -/
+    This is definitionally true (by the if-then-else in correctionScoreDP). -/
 theorem score_det_tier3 (a b : List ℕ) (go ge : ℤ)
     (h_tier3 : (lcsDP a b : ℤ) - (diagCount a b : ℤ) > go) :
-    correctionScore a b go ge = gotohGlobalScore a b go ge := by
-  unfold correctionScore
+    correctionScoreDP a b go ge = gotohGlobalScore a b go ge := by
+  unfold correctionScoreDP
   simp only
   split
   · omega

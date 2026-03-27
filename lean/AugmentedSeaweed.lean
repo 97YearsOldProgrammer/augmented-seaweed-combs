@@ -1,3 +1,4 @@
+-- Existing 10:
 import AugmentedSeaweed.Basic
 import AugmentedSeaweed.AffineMonoid
 import AugmentedSeaweed.TropicalCarry
@@ -8,3 +9,14 @@ import AugmentedSeaweed.CorrectionScore
 import AugmentedSeaweed.SplitScoring
 import AugmentedSeaweed.DepthExcess
 import AugmentedSeaweed.PathSeparation
+-- Migrated 10:
+import AugmentedSeaweed.CombComposition
+import AugmentedSeaweed.CombCorrectness
+import AugmentedSeaweed.CorrectionFormula
+import AugmentedSeaweed.CrossingCountLCS
+import AugmentedSeaweed.LCDCorrectness
+import AugmentedSeaweed.LCSExtraction
+import AugmentedSeaweed.NonMonge
+import AugmentedSeaweed.ScoreDetermination
+import AugmentedSeaweed.TropicalCollapse
+import AugmentedSeaweed.WreathComposition

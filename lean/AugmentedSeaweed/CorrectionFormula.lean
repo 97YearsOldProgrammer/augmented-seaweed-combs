@@ -112,7 +112,7 @@ theorem correction_formula_combined
   · linarith
 
 /-- The excess is non-negative: LCS ≥ diag always. -/
-theorem excess_nonneg
+theorem excess_nonneg_of_ge
     (LCS diag : ℤ)
     (h_diag_subseq : LCS ≥ diag)
     : LCS - diag ≥ 0 := by
