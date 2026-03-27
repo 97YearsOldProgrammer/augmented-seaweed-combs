@@ -5,6 +5,7 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,decorations.pathreplacing}
 \usepackage{booktabs}
+\usepackage[ruled,linesnumbered,vlined]{algorithm2e}
 
 % Theorem environments — global numbering
 \newtheorem{theorem}{Theorem}
@@ -49,7 +50,7 @@ We resolve the affine gap scoring problem by introducing the \emph{augmented sea
 
 The semi-local framework and its extensions have attracted sustained interest.  Tiskin's monograph~\cite{tiskin2022book} consolidates the theory of seaweed braids, distance multiplication, and the sentinel blow-up for bounded-length Smith--Waterman alignment~\cite{tiskin2019bounded}.  State-of-the-art algorithms for weighted sequence alignment uniformly rely on the blow-up or its structural equivalent: Cassis, Kociumaka, and Wellnitz~\cite{cassis2023weighted} achieve optimal bounded weighted edit distance via blow-up and Tiskin composition; Gorbachev and Kociumaka~\cite{gorbachev2025bounded} extend this to integer weights using core-sparse Monge multiplication~\cite{gawrychowski2025coresparse}; Charalampopoulos, Kociumaka, and Mozes~\cite{charalampopoulos2020dynamic} use the full Tiskin framework for dynamic string alignment.  On the structural side, Russo~\cite{russo2012monge} established Monge properties of gap-penalized score matrices, and Carmel, Tsur, and Ziv-Ukelson~\cite{carmel2016almost} studied almost-Monge structure in alignment scoring.  The augmented comb provides an alternative that avoids the $\nu^2$ expansion entirely, while preserving the composability that makes the Tiskin framework algorithmically useful.
 
-Section~\ref{sec:prelim} recalls the Tiskin--Krusche framework and the Gotoh affine gap model.  Sections~\ref{sec:augmented}--\ref{sec:extraction} introduce the augmented comb, its wreath product algebraic structure, and score extraction.  Section~\ref{sec:non-monge} establishes the non-Monge negative results.  Section~\ref{sec:blowup} proves the bijection with the sentinel blow-up.  Section~\ref{sec:conclusion} concludes.
+Section~\ref{sec:prelim} recalls the Tiskin--Krusche framework and the Gotoh affine gap model.  Sections~\ref{sec:augmented}--\ref{sec:extraction} introduce the augmented comb, its wreath product algebraic structure, and score extraction.  Algorithms~\ref{alg:augmented-build}--\ref{alg:banded-gotoh} provide complete pseudocode for the augmented comb build, wreath product composition, adaptive score extraction, and $\varepsilon$-banded path extraction.  Section~\ref{sec:non-monge} establishes the non-Monge negative results.  Section~\ref{sec:blowup} proves the bijection with the sentinel blow-up.  Section~\ref{sec:conclusion} concludes.
 
 \section{Preliminaries}\label{sec:prelim}
 
@@ -200,6 +201,38 @@ $\delta_{\mathrm{row}}[r] \leftarrow \delta_{\mathrm{row}}[r]+1$.
 \noindent
 In all cases, $\drow[r] \mathrel{{+}{=}} 1$ (standard).
 \end{definition}
+
+Algorithm~\ref{alg:augmented-build} formalizes Definition~\ref{def:augmented-comb} into executable pseudocode.
+
+\begin{algorithm}[H]
+\caption{Augmented Comb Build}\label{alg:augmented-build}
+\KwIn{Query $A[0..m{-}1]$, reference $B[0..n{-}1]$}
+\KwOut{$({\dcol}, \delta_{\mathrm{col}}, \drow, \delta_{\mathrm{row}})$}
+Initialize $\dcol[c] \leftarrow 0$, $\delta_{\mathrm{col}}[c] \leftarrow 0$ for $c = 0, \dots, n{-}1$\;
+Initialize $\drow[r] \leftarrow r{+}1$, $\delta_{\mathrm{row}}[r] \leftarrow 0$ for $r = 0, \dots, m{-}1$\;
+\For{$r = 0$ \KwTo $m{-}1$}{
+  \For{$c = 0$ \KwTo $n{-}1$}{
+    Save pre-swap values: $\hat{d}_c \leftarrow \dcol[c]$, $\hat{\delta}_c \leftarrow \delta_{\mathrm{col}}[c]$, $\hat{d}_r \leftarrow \drow[r]$, $\hat{\delta}_r \leftarrow \delta_{\mathrm{row}}[r]$\;
+    \uIf(\tcp*[f]{Match}){$a_r = b_c$}{
+      $\dcol[c] \leftarrow \hat{d}_r$; $\drow[r] \leftarrow \hat{d}_c$\;
+      $\delta_{\mathrm{col}}[c] \leftarrow 0$; $\delta_{\mathrm{row}}[r] \leftarrow 0$\;
+    }
+    \uElseIf(\tcp*[f]{Mismatch, swap}){$\hat{d}_c > \hat{d}_r$}{
+      $\dcol[c] \leftarrow \hat{d}_r$; $\drow[r] \leftarrow \hat{d}_c$\;
+      $\delta_{\mathrm{col}}[c] \leftarrow \hat{\delta}_r + 1$\tcp*{depth follows swapped label, uses pre-swap value}
+      $\delta_{\mathrm{row}}[r] \leftarrow \hat{\delta}_c + 1$\tcp*{depth follows swapped label, uses pre-swap value}
+    }
+    \Else(\tcp*[f]{Mismatch, no swap}){
+      $\delta_{\mathrm{col}}[c] \leftarrow \hat{\delta}_c + 1$; $\delta_{\mathrm{row}}[r] \leftarrow \hat{\delta}_r + 1$\;
+    }
+    $\drow[r] \leftarrow \drow[r] + 1$\;
+  }
+}
+\Return{$(\dcol, \delta_{\mathrm{col}}, \drow, \delta_{\mathrm{row}})$}
+\end{algorithm}
+
+\noindent
+\textbf{Implementation note.}  In the mismatch-swap case (line~11--12), the depth assignments use the \emph{pre-swap} depth values $\hat{\delta}_r$ and $\hat{\delta}_c$ saved at line~5.  A na\"ive implementation that reads $\delta_{\mathrm{row}}[r]$ after the label swap has already written to $\delta_{\mathrm{col}}[c]$ would use corrupted values.  The temporary variables $\hat{d}$ and $\hat{\delta}$ resolve this.
 
 The label rules are identical to the standard Krusche comb.
 Depth is a pure \emph{observer}: it does not affect any label
@@ -447,6 +480,24 @@ initial values (zero instead of the accumulated depth from the
 first segment), corrupting the gap depth information.
 \end{proof}
 
+Algorithm~\ref{alg:wreath-compose} makes the wreath product composition explicit.
+
+\begin{algorithm}[H]
+\caption{Wreath Product Composition}\label{alg:wreath-compose}
+\KwIn{Augmented outputs $(\perm_1, \mathbf{f}_1)$ for $A_1$ vs~$B$ and $(\perm_2, \mathbf{f}_2)$ for $A_2$ vs~$B$}
+\KwOut{Augmented output $(\perm, \mathbf{g})$ for $A_1 \cdot A_2$ vs~$B$}
+\BlankLine
+\tcp{Permutation composition (Tiskin steady-ant): $\bigO(n \log n)$}
+$\perm \leftarrow \perm_2 \circ \perm_1$\;
+\BlankLine
+\tcp{Depth composition (wreath product rule): $\bigO(n)$}
+\For{$i = 0$ \KwTo $N{-}1$}{
+  Let $\mathbf{f}_1(i) = f_{a_1, b_1}$ and $\mathbf{f}_2(\perm_1(i)) = f_{a_2, b_2}$\;
+  $\mathbf{g}(i) \leftarrow f_{a_2 \cdot a_1,\; a_2 \cdot b_1 + b_2}$\tcp*{compose affine functions}
+}
+\Return{$(\perm, \mathbf{g})$}
+\end{algorithm}
+
 \section{Score Extraction}\label{sec:extraction}
 
 The augmented comb determines affine gap scores
@@ -596,6 +647,47 @@ contains the optimal path.  The total is
 $\bigO(m\varepsilon)$, which is $\bigO(m)$ whenever
 $\varepsilon = \bigO(1)$.
 \end{proof}
+
+Algorithms~\ref{alg:extract-score} and~\ref{alg:banded-gotoh} provide complete pseudocode for the adaptive extraction scheme and the $\varepsilon$-banded fallback.
+
+\begin{algorithm}[H]
+\caption{Adaptive Score Extraction}\label{alg:extract-score}
+\KwIn{Distance column $\dcol$, sequences $A$ and $B$, window start~$s$, query length~$m$, gap-open~$g_o$, gap-extend~$g_e$}
+\KwOut{Affine gap score at window $[s,\, s{+}m)$}
+\BlankLine
+\tcp{Step 1: LCS from distance column, $\bigO(m)$}
+$\ell \leftarrow |\{j \in [s,\, s{+}m) : \dcol[j] > j - s\}|$\;
+\BlankLine
+\tcp{Step 2: diagonal match count, $\bigO(m)$}
+$d \leftarrow \sum_{i=0}^{m-1} \mathbf{1}[a_i = b_{s+i}]$\;
+\BlankLine
+\tcp{Step 3: classify by excess}
+$\varepsilon \leftarrow \ell - d$\;
+\uIf{$\varepsilon \leq g_o$}{
+  \Return{$d$}\tcp*{Correction formula (Proposition~\ref{prop:excess-correction}): exact in $\bigO(m)$}
+}
+\Else{
+  \Return{\textnormal{BandedGotoh}$(A,\, B[s{:}s{+}m],\, \varepsilon,\, g_o,\, g_e)$}\tcp*{Algorithm~\ref{alg:banded-gotoh}}
+}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{$\varepsilon$-Banded Gotoh DP}\label{alg:banded-gotoh}
+\KwIn{Query $A[0..m{-}1]$, window $W[0..w{-}1]$, band width~$\varepsilon$, gap-open~$g_o$, gap-extend~$g_e$}
+\KwOut{Affine gap score (alignment path recoverable via traceback)}
+\BlankLine
+Initialize $H[0..m,\, 0..w] \leftarrow 0$,\; $E,F \leftarrow -\infty$\;
+$H[i,0] \leftarrow -(g_o + g_e \cdot (i{-}1))$ for $i = 1, \dots, m$\;
+\BlankLine
+\For{$i = 1$ \KwTo $m$}{
+  \For{$j = \max(1,\, i - \varepsilon)$ \KwTo $\min(w,\, i + \varepsilon)$}{
+    $E[i,j] \leftarrow \max\!\bigl(H[i{-}1,j] - g_o,\; E[i{-}1,j] - g_e\bigr)$\;
+    $F[i,j] \leftarrow \max\!\bigl(H[i,j{-}1] - g_o,\; F[i,j{-}1] - g_e\bigr)$\;
+    $H[i,j] \leftarrow \max\!\bigl(H[i{-}1,j{-}1] + \mathbf{1}[a_{i-1} = w_{j-1}],\; E[i,j],\; F[i,j]\bigr)$\;
+  }
+}
+\Return{$\max_j H[m,j]$}\tcp*{Traceback through $H$, $E$, $F$ recovers the alignment path}
+\end{algorithm}
 
 \begin{remark}[Open problem: $\bigO(m)$ extraction]
 \label{rem:open-problem}
