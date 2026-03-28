@@ -46,7 +46,7 @@ The \emph{semi-local longest common subsequence} (LCS) problem asks: given strin
 
 All practical sequence aligners penalize gaps---insertions and deletions that interrupt the alignment.  The natural question is whether the distance column suffices for gap-penalized scoring.  Tiskin's sentinel blow-up~\cite{tiskin2022book,tiskin2019bounded} provides one answer: replace each character~$c$ with $\$^g c$ where~$\$$ is a fresh sentinel, compute the standard semi-local LCS on the expanded strings, and read off gap-penalized scores from the expanded distance column of length~$n\nu$ with $\nu = g{+}1$.  This works, but the $\nu^2$ expansion in string length is costly.  The distance pair $(\dcol, \drow)$ is provably insufficient: pairs of inputs with identical $(\dcol, \drow)$ produce distinct gap-penalized scores, and $\drow$ is not preserved under composition since row distances are overwritten during the comb sweep.  The blow-up has therefore remained the only known route to semi-local gap scoring.
 
-We resolve the affine gap scoring problem by introducing the \emph{augmented seaweed comb}.  Each wire in the Krusche comb carries a \emph{gap depth counter}---a non-negative integer that resets to zero on match and increments by one on mismatch.  The augmented output $(\dcol, \delta_{\mathrm{col}}, \delta_{\mathrm{row}})$ determines the complete Gotoh DP state---all three matrices $H$, $E$, $F$---with zero ambiguity (Theorem~\ref{thm:score-determination}).  The depth counter is a pure observer: it does not affect any label comparison, so the standard permutation is preserved exactly.  The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$ (Theorem~\ref{thm:wreath}), where each wire's depth transformation is an affine function $x \mapsto ax + b$ with $a \in \{0,1\}$, and composition retains $\bigO(n \log n)$ complexity (Theorem~\ref{thm:composition}).  The augmented representation is in exact bijection with the sentinel blow-up (Theorem~\ref{thm:bijection}), achieving $2\times$ storage overhead versus $\nu\times$.  We also prove that the semi-local affine gap score matrix is not Monge (Theorem~\ref{thm:non-monge}), confirming that the wreath product extension---rather than Monge-based composition---is necessary.  Key algebraic properties are formally verified in Lean~4, with 204 theorems across 17 files; the proof scripts are available at \texttt{https://github.com/97YearsOldProgrammer/augmented-seaweed-combs}.
+We resolve the affine gap scoring problem by introducing the \emph{augmented seaweed comb}.  Each wire in the Krusche comb carries a \emph{gap depth counter}---a non-negative integer that resets to zero on match and increments by one on mismatch.  The augmented output $(\dcol, \delta_{\mathrm{col}}, \delta_{\mathrm{row}})$ determines the complete Gotoh DP state---all three matrices $H$, $E$, $F$---with zero ambiguity (Theorem~\ref{thm:score-determination}).  The depth counter is a pure observer: it does not affect any label comparison, so the standard permutation is preserved exactly.  The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$ (Theorem~\ref{thm:wreath}), where each wire's depth transformation is an affine function $x \mapsto ax + b$ with $a \in \{0,1\}$, and composition retains $\bigO(n \log n)$ complexity (Theorem~\ref{thm:composition}).  The augmented representation is in exact bijection with the sentinel blow-up (Theorem~\ref{thm:bijection}), achieving $2\times$ storage overhead versus $\nu\times$.  We also prove that the semi-local affine gap score matrix is not Monge (Theorem~\ref{thm:non-monge}), confirming that the wreath product extension---rather than Monge-based composition---is necessary.  Key algebraic properties are formally verified in Lean~4, with 232 theorems across 20 files; the proof scripts are available at \texttt{https://github.com/97YearsOldProgrammer/augmented-seaweed-combs}.
 
 The semi-local framework and its extensions have attracted sustained interest.  Tiskin's monograph~\cite{tiskin2022book} consolidates the theory of seaweed braids, distance multiplication, and the sentinel blow-up for bounded-length Smith--Waterman alignment~\cite{tiskin2019bounded}.  State-of-the-art algorithms for weighted sequence alignment uniformly rely on the blow-up or its structural equivalent: Cassis, Kociumaka, and Wellnitz~\cite{cassis2023weighted} achieve optimal bounded weighted edit distance via blow-up and Tiskin composition; Gorbachev and Kociumaka~\cite{gorbachev2025bounded} extend this to integer weights using core-sparse Monge multiplication~\cite{gawrychowski2025coresparse}; Charalampopoulos, Kociumaka, and Mozes~\cite{charalampopoulos2020dynamic} use the full Tiskin framework for dynamic string alignment.  On the structural side, Russo~\cite{russo2012monge} established Monge properties of gap-penalized score matrices, and Carmel, Tsur, and Ziv-Ukelson~\cite{carmel2016almost} studied almost-Monge structure in alignment scoring.  The augmented comb provides an alternative that avoids the $\nu^2$ expansion entirely, while preserving the composability that makes the Tiskin framework algorithmically useful.
 
@@ -1025,7 +1025,7 @@ Parallel composition on GPU architectures could exploit the wreath product struc
 
 \paragraph{Formal verification.}
 The algebraic framework is formalized in Lean~4 with Mathlib, comprising
-204 theorems and lemmas across 17 files.
+232 theorems and lemmas across 20 files.
 The formally verified components include:
 the affine monoid structure (Definition~\ref{def:affine-monoid}),
 the wreath product homomorphism (Theorem~\ref{thm:wreath}),
@@ -1034,21 +1034,29 @@ the non-Monge counterexample (Theorem~\ref{thm:non-monge}),
 $\varepsilon$-band sufficiency (Proposition~\ref{prop:band-sufficiency}),
 the tropical collapse (Proposition~\ref{prop:tropical-collapse}),
 the correction formula tiers (Proposition~\ref{prop:excess-correction}),
-and path separation (the score--path distinction underlying the
-$\bigO(m\varepsilon)$ extraction).
-Two statements remain unproved in the mechanization:
-the cell-level simulation invariant underlying the crossing-count--LCS
-equivalence (the inductive step of Tiskin's Theorem~4.10~\cite{tiskin2022book}),
-and two bridge lemmas connecting the correction formula to the concrete Gotoh~DP
-computation (the column-recursive/fold equivalence and the upper bound
-when $\varepsilon \le g_o$).
+path separation (the score--path distinction underlying the
+$\bigO(m\varepsilon)$ extraction),
+and the column-recursive/fold equivalence for the Gotoh~DP
+(proved via fold decomposition with step extraction, head invariants,
+and \texttt{getD\_reverse}).
+Four statements remain unproved in the mechanization:
+three sub-lemmas of the cell-level simulation invariant underlying the
+crossing-count--LCS equivalence (the inductive step of Tiskin's
+Theorem~4.10~\cite{tiskin2022book}), requiring a row-displacement invariant
+to connect comb wire positions to DP cell values;
+and one bridge lemma for score determination: the upper bound
+$\mathrm{gotohGlobalScore} \le \mathrm{diagCount}$ when $\varepsilon \le g_o$,
+whose mathematical argument (any gapped path pays $\ge g_o$ and gains $\le
+\varepsilon \le g_o$) is sound but whose formalization requires alignment path
+decomposition over the fold-based Gotoh~DP.
 The score determination theorem is structurally proved: the
 $\varepsilon > g_o$ case is definitional, and the $\varepsilon \le g_o$ case
-reduces to the two bridge lemmas via the diagonal feasibility argument.
+reduces to two bridge lemmas---the lower bound (diagonal path feasibility,
+fully proved) and the upper bound (the remaining sorry)---via \texttt{linarith}.
 All unproved statements are verified exhaustively by testing
-(174{,}000 and 17 cases respectively with zero failures)
+(174{,}000+ and 30+ cases respectively with zero failures)
 but their full formal proofs require novel techniques for
-relating fold-based list computations to recursive cell definitions.
+relating fold-based list computations to alignment path properties.
 
 \begin{thebibliography}{99}
 
