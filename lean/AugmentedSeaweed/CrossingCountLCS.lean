@@ -1026,12 +1026,55 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
             -- Goal: d_row_k > 0 ↔ dp_new[1] > dp_new[0]
             -- dp_new[0] = 0, dp_new[1] = dp_old[0] + 1 = 1 (match case)
             -- So RHS = 1 > 0 = True. LHS = d_row_k > 0 = True (from hdr_pos).
+            -- Both sides are True: d_row_k > 0 (from hdr_pos) and dp_new[1] > dp_new[0]
+            have hs_eq : s = 0 := by omega
+            subst hs_eq
+            simp only [Nat.zero_add, Nat.sub_zero] at *
+            set b_win := List.take w b with hbw_def
+            set dp_old := lcsDpRow a_prev b_win with hdpold_def
+            set dp_new := lcsDpStep ch b_win dp_old with hdpnew_def
+            -- dp_new[0] = 0
+            have hdp0 : dp_new.getD 0 0 = 0 :=
+              lcsDpStep_zero ch b_win dp_old
+            -- dp_new[1] > dp_new[0]: since ch matches b_win[0], dp_new[1] = dp_old[0]+1 = 1 > 0
+            have hbwin0 : b_win.getD 0 0 = b.getD 0 0 := by
+              simp only [hbw_def, List.getD]
+              rw [List.getElem?_take]
+              simp [show 0 < w from by omega]
+            have hmatch_bwin : (ch == b_win.getD 0 0) = true := by
+              rw [hbwin0]; exact hmatch
+            have hdpnew1_pos : dp_new.getD 1 0 > 0 := by
+              -- dp_new[1] = dp_old[0] + 1 = 0 + 1 = 1 (match at position 0)
+              -- Use lcsDpStep_nondecreasing to get dp_new[1] >= dp_new[0] = 0
+              -- But we need strictly greater. In the match case, dp_new[1] = dp_old[0]+1 = 1.
+              -- Use lcsDpStepPartial_last to compute dp_new[1] directly.
+              have hbw_len : b_win.length = w := by simp [hbw_def]; omega
+              -- First get dp_new[1] via lcsDpStepPartial at step 1
+              have hval : dp_new.getD 1 0 = if ch == b_win.getD 0 0
+                  then dp_old.getD 0 0 + 1
+                  else max (dp_old.getD 1 0) ((lcsDpStepPartial ch b_win dp_old 0).getD 0 0) := by
+                rw [hdpnew_def, lcsDpStep_eq_partial]
+                conv in lcsDpStepPartial _ _ _ b_win.length => rw [hbw_len]
+                by_cases hwg : 1 < w
+                · -- Use stability: (partial w).getD 1 0 = (partial (1+1)).getD 1 0
+                  rw [lcsDpStepPartial_getD_stable ch b_win dp_old 1 w hwg]
+                  -- Now prev_at: (partial 2).getD 1 0 = (partial 1).getD 1 0
+                  have h2eq : 1 + 1 = (0 + 1) + 1 := by omega
+                  conv in lcsDpStepPartial _ _ _ (1 + 1) => rw [show 1 + 1 = 0 + 1 + 1 from by omega]
+                  rw [lcsDpStepPartial_prev_at]
+                  rw [lcsDpStepPartial_last]
+                · have hw1 : w = 1 := by omega
+                  rw [hw1]
+                  rw [lcsDpStepPartial_last]
+              rw [hval, hmatch_bwin, if_pos rfl]
+              rw [hdpold_def, lcsDpRow_zero a_prev b_win]
+              omega
             constructor
             · intro _
-              -- Need dp_new[1] > dp_new[0], which is always true in match case
-              sorry -- match case k=0: dp_new[1] > dp_new[0]
-            · intro _
-              exact hdr_pos
+              -- The goal should already have dp_new after set; simplify drop 0
+              simp only [List.drop_zero] at *
+              rw [hdp0]; exact hdpnew1_pos
+            · intro _; exact hdr_pos
       · intro j hj
         have : (d_col_k.set k d_row_k).getD j 0 = d_col_k.getD j 0 :=
           hset_ne d_row_k j (by omega)
@@ -1061,16 +1104,24 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
               have : j = k - s := by omega
               rw [this]
               exact hdr_inst
-            · -- k = 0: swap case
+            · -- k = 0: swap case. Both sides True when d_row_k > 0.
+              -- dp_new[1] > dp_new[0] = dp_new[1] > 0 follows from:
+              -- dc > d_row_k > 0, dc = d_col_orig.getD 0 0, CombEncodes gives dp_old[1] > 0,
+              -- mismatch case gives dp_new[1] ≥ dp_old[1] > 0
               have hk_eq : k = 0 := by omega
               subst hk_eq
               have hj_eq : j = 0 := by omega
               rw [hj_eq]
-              constructor
-              · intro _
-                sorry -- swap case k=0: dp_new[1] > dp_new[0]
-              · intro _
-                exact hdr_pos
+              have hs_eq : s = 0 := by omega
+              subst hs_eq
+              simp only [Nat.zero_add, Nat.sub_zero, List.drop_zero] at *
+              -- dp_new[1] > 0 via non-decreasing property of lcsDpStep
+              -- lcsDpStep_nondecreasing gives dp_new[1] ≥ dp_new[0] = 0
+              -- But we need strictly greater. Use the swap condition.
+              -- In the swap case: dc > d_row_k, dc = d_col_orig.getD 0 0
+              -- combEncodes_per_position gives: d_col_orig.getD 0 0 > 0 ↔ dp_old[1] > dp_old[0] = 0
+              -- So dp_old[1] > 0. And dp_new[1] ≥ dp_old[1] (prev dominance from DP properties).
+              sorry -- swap k=0: dp_new[1] > dp_new[0] and d_row_k > 0 ↔ iff
         · intro j hj
           have : (d_col_k.set k d_row_k).getD j 0 = d_col_k.getD j 0 :=
             hset_ne d_row_k j (by omega)
