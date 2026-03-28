@@ -402,13 +402,15 @@ theorem lcsDpRow_getD_eq_lcsDp (a : List ℕ) (b_win : List ℕ) :
 theorem lcsDpRow_getD_prefix (a : List ℕ) (b_win : List ℕ) (j : ℕ)
     (hj : j ≤ b_win.length) :
     (lcsDpRow a b_win).getD j 0 = lcsDp a (b_win.take j) := by
-  -- Strategy: prove (lcsDpRow a b_win).getD j 0 = (lcsDpRow a (b_win.take j)).getD j 0,
+  -- Strategy: suffices to show (lcsDpRow a b_win).getD j 0 = (lcsDpRow a (b_win.take j)).getD j 0,
   -- then apply lcsDpRow_getD_eq_lcsDp to b_win.take j.
-  -- Step 1: locality (DP at position j only depends on b_win[0..j-1])
-  -- Step 2: lcsDpRow_getD_eq_lcsDp gives getD j 0 = lcsDp a (b_win.take j) for
-  --         b_win.take j with length j.
-  -- BLOCKED: requires lcsDpStep locality lemma (lcsDpStepPartial truncation
-  -- invariance). This is a ~50 line helper about the fold structure of lcsDpStep.
+  suffices h : (lcsDpRow a b_win).getD j 0 = (lcsDpRow a (b_win.take j)).getD j 0 by
+    rw [h, ← lcsDpRow_getD_eq_lcsDp]
+    congr 1
+    simp [List.length_take]; omega
+  -- Need: lcsDpRow locality -- the DP at position j only depends on b_win[0..j-1].
+  -- Proof by induction on a: at each step, lcsDpStep at position j only uses
+  -- b_win[0..j-1] and prev[0..j], so truncating b_win past j doesn't change it.
   sorry
 
 /-- lcsDpRow for a ++ [ch] = lcsDpStep ch applied to lcsDpRow a. -/
