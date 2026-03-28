@@ -20,22 +20,34 @@
   Proof structure:
   - score_determination splits into eps > go (rfl) and eps <= go (bridge lemmas)
   - gotoh_ge_diag: Gotoh DP >= diagCount (diagonal path is feasible) -- PROVED
-  - gotoh_le_diag_when_eps_small: when eps <= go, Gotoh DP <= diagCount -- sorry
+  - gotoh_le_diag_when_eps_small: when eps <= go, Gotoh DP <= diagCount -- DECOMPOSED
+    Proof body is sorry-free; depends on 12 helper lemma sorrys (LCS infrastructure).
   - gotohCellH_eq_processRow: column-recursive H = fold-based H -- PROVED
     (proved via fold decomposition infrastructure: gotohRowFoldStep, gotohRowFoldAfterK,
      head_eq invariant, getD on unreversed list, getD_reverse to connect to reversed output)
 
-  SORRY STATUS (1 remaining):
-  1. gotoh_le_diag_when_eps_small: when eps <= go, Gotoh score <= diagCount
-     Mathematical argument (sound): any non-diagonal path opens >= 1 gap
-     (costing >= go); max extra matches = eps <= go; net benefit <= 0;
-     so score <= diag. Formalization blocked by: the fold-based Gotoh DP
-     does not expose alignment paths. Approach (b) diagonal invariant attempted
-     in Plan 02.2-02 and found to be blocked by off-diagonal H value bounds.
-     Resolution requires alignment path formalization (~300-400 lines).
-     See detailed SORRY STATUS comment above the theorem definition.
-     Verified on 30+ concrete test cases via native_decide + exhaustive search
-     over all sequences up to length 6.
+  SORRY STATUS (12 helper sorrys, decomposed from original 1):
+  The gotoh_le_diag_when_eps_small sorry has been decomposed into a complete proof
+  architecture with 12 well-scoped helper lemma sorrys. The proof body itself
+  compiles without sorry. Key insight: epsilon is non-decreasing along the diagonal
+  (eps(prefix k) <= eps(full)), which unblocks the diagonal invariant approach
+  (previously believed impossible -- see SORRY STATUS comment below).
+
+  Remaining sorry categories:
+  a) LCS DP infrastructure (7 sorrys): lcsAfterK_length, lcsDP_eq_lcsAfterK,
+     lcsCellDP_unit_col, lcsAfterK_mono_row/col, lcsAfterK_match_extend,
+     lcsAfterK_unit_row -- standard LCS properties, each ~20-40 lines
+  b) Mutual Gotoh/LCS bound (1 sorry): gotoh_HEF_le_lcs -- core invariant,
+     H[i][j] <= lcs(i,j), E/F <= lcs(i,j) - go, ~100 lines
+  c) LCS diagonal step (2 sorrys): lcsDiag_match_step, lcsDiag_mismatch_step
+     -- follow from LCS recurrence at diagonal cells, ~30 lines each
+  d) eps_nondecreasing (1 sorry): follows from (c) + diagCount step, ~20 lines
+  e) gotoh_diag_le_diagCount (1 sorry): diagonal induction combining (b) and (d),
+     ~80 lines
+
+  Estimated total remaining: ~250-350 lines of standard DP/list reasoning.
+  Verified on 30+ concrete test cases via native_decide + exhaustive search
+  over all sequences up to length 6.
 
   Paper reference: Theorem 1 (Score Determination)
 -/
@@ -731,87 +743,233 @@ theorem gotoh_ge_diag (a b : List ℕ) (go ge : ℤ)
             split <;> simp_all
           linarith [this]
 
-/- SORRY STATUS: gotoh_le_diag_when_eps_small
+/-! ### LCS DP infrastructure for upper bound proof
 
-   Blocking sub-goal: The Gotoh DP is defined via fold (gotohProcessRow), which
-   computes max over all alignment paths IMPLICITLY. To prove the upper bound
-   (score <= diagCount when eps <= go), one must either:
-   (1) Make alignment paths explicit and decompose the DP as max-over-paths, or
-   (2) Find an inductive invariant on the DP that doesn't require path decomposition.
-   Both require ~200+ lines of new formalization infrastructure.
+The proof of gotoh_le_diag_when_eps_small requires:
+1. A mutual H/E/F upper bound: H[i][j] <= lcsDP(take i, take j),
+   E[i][j] <= lcsDP(take i, take j) - go, F[i][j] <= lcsDP(take i, take j) - go
+2. The eps-non-decreasing property: eps(prefix k) <= eps(full) for diagonal prefixes
+3. Diagonal induction: H[k][k] <= diagCount(take k, take k)
 
-   The specific blocking goal state is:
-     a b : List ℕ, go ge : ℤ, h_go : go >= 1, h_ge : ge >= 1,
-     h_len : a.length = b.length,
-     h_eps : (lcsDP a b : ℤ) - (diagCount a b : ℤ) <= go
-     ⊢ gotohGlobalScore a b go ge <= (diagCount a b : ℤ)
+Key insight: eps = lcsDP - diagCount is non-decreasing along the diagonal because
+at a match, lcsDP increases by exactly 1 and diagCount increases by 1 (eps unchanged);
+at a mismatch, lcsDP increases by 0 or 1 and diagCount stays (eps non-decreasing).
+This means eps(prefix) <= eps(full) <= go for ALL prefixes, unblocking Option B.
 
-   Helper lemmas proved: None new (existing infrastructure is gotoh_ge_diag,
-   gotohCellH_eq_processRow, gotohCellH_ge_diag, gotohAfterK_full,
-   gotohProcessRow_diag_ge, gotohRowFoldStep/AfterK with head_eq/getD).
+The previous SORRY STATUS incorrectly claimed "eps(prefix) <= go does NOT follow from
+eps(full) <= go". It DOES follow from the monotonicity of eps along the diagonal. -/
 
-   Minimum infrastructure needed:
-   - Option A (alignment paths): Define `AlignPath` structure (list of
-     diagonal/horizontal/vertical steps from (0,0) to (m,m)), define
-     `pathScore : AlignPath -> Z` counting matches minus gap penalties,
-     prove `gotohGlobalScore = max over all valid AlignPaths of pathScore`,
-     then prove every path with >= 1 gap opening scores <= diag when eps <= go.
-     Estimated: 300-400 lines.
-   - Option B (diagonal invariant): Prove H[k][k] <= diagCount(a.take k, b.take k)
-     by row induction. BLOCKED: this requires bounding E[k+1][k+1] and F[k+1][k+1]
-     at diagonal cells, which involves off-diagonal H values (H[k][k+1], H[k+1][k]).
-     Empirically verified that E[k][k] <= diagCount(k) when eps(prefix) <= go, but
-     eps(prefix) <= go does NOT follow from eps(full) <= go. The global eps condition
-     is not decomposable into per-step conditions.
-   - Option C (monotonicity in go): Prove gotohGlobalScore decreases as go increases.
-     Then show at go = LCS (huge penalty), only the diagonal path is feasible, giving
-     score = diagCount. Still requires showing diagonal path dominates at large go.
-     Estimated: 200-300 lines.
+/-- Recursive LCS DP row after processing k characters of a.
+    lcsAfterK a b k = [dp[k][0], dp[k][1], ..., dp[k][b.length]]. -/
+def lcsAfterK (a b : List ℕ) : ℕ → List ℕ
+  | 0 => List.replicate (b.length + 1) 0
+  | k + 1 =>
+    let prev := lcsAfterK a b k
+    let ai := a.getD k 0
+    (List.range b.length).foldl (fun (curr : List ℕ) (j : ℕ) =>
+      let bj := b.getD j 0
+      let val := if ai == bj then prev.getD j 0 + 1
+                 else max (prev.getD (j + 1) 0) (curr.getD j 0)
+      curr ++ [val]
+    ) [0]
 
-   Approaches attempted (Plan 02.2-02, 2026-03-28):
-   1. Diagonal invariant (approach b): Attempted to prove H[k][k] <= diagCount(k) by
-      row induction on gotohAfterK. The diagonal component H[k][k] + match <= diagCount(k+1)
-      works by IH, but E[k+1][k+1] and F[k+1][k+1] bounds require off-diagonal H values.
-      Specifically, E[k+1][k+1] <= max_j(H[k][j+1] - go - (k-j)*ge) involves H[k][j] for
-      j != k, which aren't bounded by diagCount(k) alone. The bound H[i][j] <= min(i,j) was
-      verified but only gives E[m][m] <= (m-1) - go, insufficient when diagCount < m-1-go.
-   2. Cell-wise upper bound: Proved H[i][j] <= min(i,j) for all i,j (via mutual induction
-      on H, E, F), but this gives H[m][m] <= m, not H[m][m] <= diagCount.
-   3. LCS upper bound: Considered proving gotohGlobalScore <= lcsDP (matches minus penalties
-      <= total matches). This would give gotoh <= diag + eps, not gotoh <= diag.
-   4. Reduction to correction_tier2: The abstract theorem in CorrectionFormula.lean requires
-      extracting num_crossings, crossing_gain, gap_cost from the DP, which requires path
-      decomposition (same obstacle as approach a).
-   5. Numerical verification: Confirmed H[k][k] <= diagCount(k) on all sequences up to
-      length 6 over alphabet {0,1,2} with go in {1,2,3}, ge=1, when eps(prefix) <= go.
-      Zero violations found (exhaustive search).
+/-- lcsAfterK has the correct length. -/
+theorem lcsAfterK_length (a b : List ℕ) (k : ℕ) :
+    (lcsAfterK a b k).length = b.length + 1 := by
+  sorry
 
-   Time spent: ~90 minutes analysis + numerical experiments.
+/-- lcsDP equals lcsAfterK at full length. -/
+theorem lcsDP_eq_lcsAfterK (a b : List ℕ) :
+    lcsDP a b = (lcsAfterK a b a.length).getD b.length 0 := by
+  sorry
 
-   **Conclusion:** This sorry requires alignment path formalization -- the most reusable
-   approach (option A). This is a standalone formalization project worth ~300-400 lines
-   of Lean 4. The mathematical argument is sound and empirically verified on 174K+ cases.
+/-- LCS DP cell value: column-recursive version. -/
+def lcsCellDP (prev : List ℕ) (ai : ℕ) (b : List ℕ) : ℕ → ℕ
+  | 0 => 0
+  | j + 1 =>
+    if ai == b.getD j 0 then prev.getD j 0 + 1
+    else max (prev.getD (j + 1) 0) (lcsCellDP prev ai b j)
 
-   **Mathematical argument (sound, not yet formalized):**
-   Any alignment path from (0,0) to (m,m) with |a|=|b|=m falls into two cases:
-   1. The gap-free (diagonal) path: scores exactly diagCount.
-   2. Any path with >= 1 gap opening: pays >= go in gap penalties, gains <= LCS matches.
-      So score <= LCS - go = diagCount + eps - go <= diagCount (since eps <= go).
-   Therefore gotohGlobalScore = max(case1, case2) <= diagCount.
+/-- LCS unit increase in columns: dp[i][j+1] <= dp[i][j] + 1.
+    Adding one character to b increases LCS by at most 1. -/
+theorem lcsCellDP_unit_col (prev : List ℕ) (ai : ℕ) (b : List ℕ) (j : ℕ) :
+    lcsCellDP prev ai b (j + 1) ≤ lcsCellDP prev ai b j + 1 := by
+  sorry
 
-   **Empirical verification:** Verified on 13 concrete test cases below (gotoh_le_diag_test1
-   through gotoh_le_diag_test13) covering eps=0, eps=go boundary, various alphabets,
-   gap penalties, and string lengths. Plus 174,000+ property test cases in CombComposition,
-   plus exhaustive search over all sequences up to length 6 with 3-letter alphabet. -/
+/-- LCS monotonicity in rows: dp[i+1][j] >= dp[i][j].
+    Processing more characters of a can only increase LCS. -/
+theorem lcsAfterK_mono_row (a b : List ℕ) (k j : ℕ) (hk : k < a.length)
+    (hj : j ≤ b.length) :
+    (lcsAfterK a b (k + 1)).getD j 0 ≥ (lcsAfterK a b k).getD j 0 := by
+  sorry
+
+/-- LCS monotonicity in columns: dp[i][j+1] >= dp[i][j]. -/
+theorem lcsAfterK_mono_col (a b : List ℕ) (k j : ℕ) (hk : k ≤ a.length)
+    (hj : j < b.length) :
+    (lcsAfterK a b k).getD (j + 1) 0 ≥ (lcsAfterK a b k).getD j 0 := by
+  sorry
+
+/-- LCS match extension: if a[k] = b[j], dp[k+1][j+1] >= dp[k][j] + 1. -/
+theorem lcsAfterK_match_extend (a b : List ℕ) (k j : ℕ) (hk : k < a.length)
+    (hj : j < b.length) (hmatch : a.getD k 0 == b.getD j 0) :
+    (lcsAfterK a b (k + 1)).getD (j + 1) 0 ≥ (lcsAfterK a b k).getD j 0 + 1 := by
+  sorry
+
+/-- LCS unit increase in rows: dp[k+1][j] <= dp[k][j] + 1. -/
+theorem lcsAfterK_unit_row (a b : List ℕ) (k j : ℕ) (hk : k < a.length)
+    (hj : j ≤ b.length) :
+    (lcsAfterK a b (k + 1)).getD j 0 ≤ (lcsAfterK a b k).getD j 0 + 1 := by
+  sorry
+
+/-! ### Mutual H/E/F upper bound by LCS
+
+Key invariant: for all rows i and columns j:
+  H[i][j] <= lcsDP(a.take i, b.take j)      (Z cast)
+  E[i][j] <= lcsDP(a.take i, b.take j) - go  (gapped paths pay >= go)
+  F[i][j] <= lcsDP(a.take i, b.take j) - go -/
+
+/-- The Gotoh E value at cell (i, j), extracted from gotohAfterK. -/
+def gotohE_at (a b : List ℕ) (go ge : ℤ) (i j : ℕ) : ℤ :=
+  (gotohAfterK a b go ge i).e.getD j NEG_INF
+
+/-- The Gotoh F value at cell (i, j), extracted from gotohAfterK. -/
+def gotohF_at (a b : List ℕ) (go ge : ℤ) (i j : ℕ) : ℤ :=
+  (gotohAfterK a b go ge i).f.getD j NEG_INF
+
+/-- The Gotoh H value at cell (i, j), extracted from gotohAfterK. -/
+def gotohH_at (a b : List ℕ) (go ge : ℤ) (i j : ℕ) : ℤ :=
+  (gotohAfterK a b go ge i).h.getD j NEG_INF
+
+/-- Mutual bound: H[i][j] <= lcsAfterK(i, j) (as integers).
+    E[i][j] <= lcsAfterK(i, j) - go.
+    F[i][j] <= lcsAfterK(i, j) - go.
+    This is the core inductive invariant for the upper bound proof. -/
+theorem gotoh_HEF_le_lcs (a b : List ℕ) (go ge : ℤ)
+    (h_go : go ≥ 1) (h_ge : ge ≥ 1) (i j : ℕ)
+    (hi : i ≤ a.length) (hj : j ≤ b.length) :
+    gotohH_at a b go ge i j ≤ ((lcsAfterK a b i).getD j 0 : ℤ) ∧
+    gotohE_at a b go ge i j ≤ ((lcsAfterK a b i).getD j 0 : ℤ) - go ∧
+    gotohF_at a b go ge i j ≤ ((lcsAfterK a b i).getD j 0 : ℤ) - go := by
+  sorry
+
+/-! ### Epsilon non-decreasing along diagonal
+
+Key property: eps(k) = lcsDP(take k, take k) - diagCount(take k, take k)
+is non-decreasing in k. This means eps(prefix) <= eps(full) <= go. -/
+
+/-- diagCount prefix: count matches in first k positions. -/
+def diagCountPrefix (a b : List ℕ) (k : ℕ) : ℕ :=
+  (List.range k).countP (fun i => a.getD i 0 == b.getD i 0)
+
+/-- diagCountPrefix at full length equals diagCount. -/
+theorem diagCountPrefix_full (a b : List ℕ) (h_len : a.length = b.length) :
+    diagCountPrefix a b a.length = diagCount a b := by
+  unfold diagCountPrefix diagCount
+  have : min a.length b.length = a.length := by omega
+  rw [this]
+
+/-- diagCount prefix step: diagCountPrefix(k+1) = diagCountPrefix(k) + match(k). -/
+theorem diagCountPrefix_step (a b : List ℕ) (k : ℕ) :
+    diagCountPrefix a b (k + 1) = diagCountPrefix a b k +
+    if (a.getD k 0 == b.getD k 0) = true then 1 else 0 := by
+  unfold diagCountPrefix
+  rw [List.range_succ, List.countP_append, List.countP_cons, List.countP_nil]
+  omega
+
+/-- LCS on diagonal prefix: lcsAfterK at the diagonal. -/
+def lcsDiag (a b : List ℕ) (k : ℕ) : ℕ :=
+  (lcsAfterK a b k).getD k 0
+
+/-- Epsilon at diagonal prefix k. -/
+def epsDiag (a b : List ℕ) (k : ℕ) : ℤ :=
+  (lcsDiag a b k : ℤ) - (diagCountPrefix a b k : ℤ)
+
+/-- LCS on diagonal is non-decreasing by exactly 1 at match. -/
+theorem lcsDiag_match_step (a b : List ℕ) (k : ℕ)
+    (hk : k < a.length) (hkb : k < b.length)
+    (hmatch : a.getD k 0 == b.getD k 0) :
+    lcsDiag a b (k + 1) = lcsDiag a b k + 1 := by
+  sorry
+
+/-- LCS on diagonal is non-decreasing at mismatch. -/
+theorem lcsDiag_mismatch_step (a b : List ℕ) (k : ℕ)
+    (hk : k < a.length) (hkb : k < b.length)
+    (hmismatch : ¬(a.getD k 0 == b.getD k 0)) :
+    lcsDiag a b (k + 1) ≥ lcsDiag a b k := by
+  sorry
+
+/-- **Epsilon is non-decreasing along the diagonal.**
+    This is the key insight that unblocks Option B. -/
+theorem eps_nondecreasing (a b : List ℕ) (k : ℕ)
+    (hk : k < a.length) (hkb : k < b.length) :
+    epsDiag a b (k + 1) ≥ epsDiag a b k := by
+  sorry
+
+/-- **Epsilon at prefix <= epsilon at full length.** -/
+theorem eps_prefix_le_full (a b : List ℕ) (k : ℕ)
+    (h_len : a.length = b.length) (hk : k ≤ a.length) :
+    epsDiag a b k ≤ epsDiag a b a.length := by
+  -- Prove by strong induction: eps is non-decreasing, so eps(k) <= eps(m) for k <= m
+  -- We induct on the gap (a.length - k)
+  suffices h : ∀ gap : ℕ, ∀ j : ℕ, j + gap = a.length → j ≤ a.length →
+      epsDiag a b j ≤ epsDiag a b a.length by
+    exact h (a.length - k) k (by omega) hk
+  intro gap
+  induction gap with
+  | zero =>
+    intro j hj _
+    have : j = a.length := by omega
+    rw [this]
+  | succ g ih =>
+    intro j hj hj_le
+    have hj_lt : j < a.length := by omega
+    have hj_ltb : j < b.length := by omega
+    have h_step : epsDiag a b j ≤ epsDiag a b (j + 1) :=
+      eps_nondecreasing a b j hj_lt hj_ltb
+    have h_rest : epsDiag a b (j + 1) ≤ epsDiag a b a.length :=
+      ih (j + 1) (by omega) (by omega)
+    linarith
+
+/-! ### Diagonal induction: H[k][k] <= diagCount(prefix k)
+
+Combining:
+- Diagonal term: H[k][k] + match <= diagCount(k+1) by IH
+- E/F terms: E[k+1][k+1] <= lcsDP(prefix k+1) - go
+                           <= diagCount(prefix k+1) + eps(prefix k+1) - go
+                           <= diagCount(prefix k+1) (since eps(prefix) <= go) -/
+
+/-- **Diagonal H bound**: H[k][k] <= diagCount(prefix k) when eps(full) <= go. -/
+theorem gotoh_diag_le_diagCount (a b : List ℕ) (go ge : ℤ)
+    (h_go : go ≥ 1) (h_ge : ge ≥ 1)
+    (h_len : a.length = b.length)
+    (h_eps : (lcsDP a b : ℤ) - (diagCount a b : ℤ) ≤ go) :
+    ∀ k : ℕ, k ≤ a.length →
+    (gotohAfterK a b go ge k).h.getD k NEG_INF ≤ (diagCountPrefix a b k : ℤ) := by
+  sorry
+
 /-- **Bridge Lemma 2 (gotoh_le_diag_when_eps_small)**: When epsilon <= go,
-    Gotoh DP score <= diagonal match count. See SORRY STATUS above for
-    detailed formalization analysis and blocking reasons. -/
+    Gotoh DP score <= diagonal match count.
+
+    Proof strategy (Option B, unblocked by eps-non-decreasing):
+    1. Mutual H/E/F upper bound via LCS (gotoh_HEF_le_lcs)
+    2. eps(prefix k) <= eps(full) <= go (eps_prefix_le_full)
+    3. Diagonal induction: H[k][k] <= diagCount(prefix k) (gotoh_diag_le_diagCount)
+    4. At k = m: H[m][m] <= diagCount(a, b) -/
 theorem gotoh_le_diag_when_eps_small (a b : List ℕ) (go ge : ℤ)
     (h_go : go ≥ 1) (h_ge : ge ≥ 1)
     (h_len : a.length = b.length)
     (h_eps : (lcsDP a b : ℤ) - (diagCount a b : ℤ) ≤ go) :
     gotohGlobalScore a b go ge ≤ (diagCount a b : ℤ) := by
-  sorry
+  -- Apply diagonal bound at k = a.length
+  have h_diag := gotoh_diag_le_diagCount a b go ge h_go h_ge h_len h_eps a.length le_rfl
+  -- Connect diagCountPrefix to diagCount
+  rw [diagCountPrefix_full a b h_len] at h_diag
+  -- Connect gotohAfterK to gotohGlobalScore
+  show gotohGlobalScore a b go ge ≤ ↑(diagCount a b)
+  unfold gotohGlobalScore
+  conv_lhs => rw [show b.length = a.length from h_len.symm ▸ rfl]
+  rw [← gotohAfterK_full]
+  exact h_diag
 
 /-! ## The Score Determination Theorem (Statement)
 
