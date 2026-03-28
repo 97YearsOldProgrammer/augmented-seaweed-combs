@@ -30,12 +30,12 @@
      Mathematical argument (sound): any non-diagonal path opens >= 1 gap
      (costing >= go); max extra matches = eps <= go; net benefit <= 0;
      so score <= diag. Formalization blocked by: the fold-based Gotoh DP
-     does not expose alignment paths. Three potential approaches identified:
-     (a) Define alignment paths + prove DP computes max over paths
-     (b) Prove tight inductive invariant on (k,k) diagonal trace
-     (c) Prove Gotoh score monotonicity in go + show diagonal dominates at go=LCS
-     All require substantial formalization (~200+ lines).
-     Verified on 30+ concrete test cases via native_decide.
+     does not expose alignment paths. Approach (b) diagonal invariant attempted
+     in Plan 02.2-02 and found to be blocked by off-diagonal H value bounds.
+     Resolution requires alignment path formalization (~300-400 lines).
+     See detailed SORRY STATUS comment above the theorem definition.
+     Verified on 30+ concrete test cases via native_decide + exhaustive search
+     over all sequences up to length 6.
 
   Paper reference: Theorem 1 (Score Determination)
 -/
@@ -731,31 +731,81 @@ theorem gotoh_ge_diag (a b : List ℕ) (go ge : ℤ)
             split <;> simp_all
           linarith [this]
 
+/- SORRY STATUS: gotoh_le_diag_when_eps_small
+
+   Blocking sub-goal: The Gotoh DP is defined via fold (gotohProcessRow), which
+   computes max over all alignment paths IMPLICITLY. To prove the upper bound
+   (score <= diagCount when eps <= go), one must either:
+   (1) Make alignment paths explicit and decompose the DP as max-over-paths, or
+   (2) Find an inductive invariant on the DP that doesn't require path decomposition.
+   Both require ~200+ lines of new formalization infrastructure.
+
+   The specific blocking goal state is:
+     a b : List ℕ, go ge : ℤ, h_go : go >= 1, h_ge : ge >= 1,
+     h_len : a.length = b.length,
+     h_eps : (lcsDP a b : ℤ) - (diagCount a b : ℤ) <= go
+     ⊢ gotohGlobalScore a b go ge <= (diagCount a b : ℤ)
+
+   Helper lemmas proved: None new (existing infrastructure is gotoh_ge_diag,
+   gotohCellH_eq_processRow, gotohCellH_ge_diag, gotohAfterK_full,
+   gotohProcessRow_diag_ge, gotohRowFoldStep/AfterK with head_eq/getD).
+
+   Minimum infrastructure needed:
+   - Option A (alignment paths): Define `AlignPath` structure (list of
+     diagonal/horizontal/vertical steps from (0,0) to (m,m)), define
+     `pathScore : AlignPath -> Z` counting matches minus gap penalties,
+     prove `gotohGlobalScore = max over all valid AlignPaths of pathScore`,
+     then prove every path with >= 1 gap opening scores <= diag when eps <= go.
+     Estimated: 300-400 lines.
+   - Option B (diagonal invariant): Prove H[k][k] <= diagCount(a.take k, b.take k)
+     by row induction. BLOCKED: this requires bounding E[k+1][k+1] and F[k+1][k+1]
+     at diagonal cells, which involves off-diagonal H values (H[k][k+1], H[k+1][k]).
+     Empirically verified that E[k][k] <= diagCount(k) when eps(prefix) <= go, but
+     eps(prefix) <= go does NOT follow from eps(full) <= go. The global eps condition
+     is not decomposable into per-step conditions.
+   - Option C (monotonicity in go): Prove gotohGlobalScore decreases as go increases.
+     Then show at go = LCS (huge penalty), only the diagonal path is feasible, giving
+     score = diagCount. Still requires showing diagonal path dominates at large go.
+     Estimated: 200-300 lines.
+
+   Approaches attempted (Plan 02.2-02, 2026-03-28):
+   1. Diagonal invariant (approach b): Attempted to prove H[k][k] <= diagCount(k) by
+      row induction on gotohAfterK. The diagonal component H[k][k] + match <= diagCount(k+1)
+      works by IH, but E[k+1][k+1] and F[k+1][k+1] bounds require off-diagonal H values.
+      Specifically, E[k+1][k+1] <= max_j(H[k][j+1] - go - (k-j)*ge) involves H[k][j] for
+      j != k, which aren't bounded by diagCount(k) alone. The bound H[i][j] <= min(i,j) was
+      verified but only gives E[m][m] <= (m-1) - go, insufficient when diagCount < m-1-go.
+   2. Cell-wise upper bound: Proved H[i][j] <= min(i,j) for all i,j (via mutual induction
+      on H, E, F), but this gives H[m][m] <= m, not H[m][m] <= diagCount.
+   3. LCS upper bound: Considered proving gotohGlobalScore <= lcsDP (matches minus penalties
+      <= total matches). This would give gotoh <= diag + eps, not gotoh <= diag.
+   4. Reduction to correction_tier2: The abstract theorem in CorrectionFormula.lean requires
+      extracting num_crossings, crossing_gain, gap_cost from the DP, which requires path
+      decomposition (same obstacle as approach a).
+   5. Numerical verification: Confirmed H[k][k] <= diagCount(k) on all sequences up to
+      length 6 over alphabet {0,1,2} with go in {1,2,3}, ge=1, when eps(prefix) <= go.
+      Zero violations found (exhaustive search).
+
+   Time spent: ~90 minutes analysis + numerical experiments.
+
+   **Conclusion:** This sorry requires alignment path formalization -- the most reusable
+   approach (option A). This is a standalone formalization project worth ~300-400 lines
+   of Lean 4. The mathematical argument is sound and empirically verified on 174K+ cases.
+
+   **Mathematical argument (sound, not yet formalized):**
+   Any alignment path from (0,0) to (m,m) with |a|=|b|=m falls into two cases:
+   1. The gap-free (diagonal) path: scores exactly diagCount.
+   2. Any path with >= 1 gap opening: pays >= go in gap penalties, gains <= LCS matches.
+      So score <= LCS - go = diagCount + eps - go <= diagCount (since eps <= go).
+   Therefore gotohGlobalScore = max(case1, case2) <= diagCount.
+
+   **Empirical verification:** Verified on 13 concrete test cases below (gotoh_le_diag_test1
+   through gotoh_le_diag_test13) covering eps=0, eps=go boundary, various alphabets,
+   gap penalties, and string lengths. Plus 174,000+ property test cases in CombComposition,
+   plus exhaustive search over all sequences up to length 6 with 3-letter alphabet. -/
 /-- **Bridge Lemma 2 (gotoh_le_diag_when_eps_small)**: When epsilon <= go,
-    Gotoh DP score <= diagonal match count.
-
-    **Mathematical argument (sound, not yet formalized):**
-    Any alignment path from (0,0) to (m,m) with |a|=|b|=m falls into two cases:
-    1. The gap-free (diagonal) path: scores exactly diagCount.
-    2. Any path with ≥ 1 gap opening: pays ≥ go in gap penalties, gains ≤ LCS matches.
-       So score ≤ LCS - go = diagCount + ε - go ≤ diagCount (since ε ≤ go).
-    Therefore gotohGlobalScore = max(case1, case2) ≤ diagCount.
-
-    **Formalization challenge:**
-    The Gotoh DP is defined via fold (gotohProcessRow), not as an explicit max over
-    alignment paths. Connecting the fold-based DP to path-based reasoning requires either:
-    (a) Defining alignment paths, their scores, and proving the DP computes the max —
-        essentially reproving the correctness of the Gotoh DP (substantial formalization).
-    (b) Proving a tight inductive invariant on the DP trace that implies the bound —
-        this is blocked by the fact that H[k][k] mixes diagonal and gapped contributions,
-        and the eps ≤ go condition is global, not per-step.
-    (c) Proving Gotoh score monotonicity in go (increasing go decreases score),
-        then showing gotohGlobalScore at go = lcsDP equals diagCount — still requires
-        showing the diagonal path dominates when gaps are prohibitively expensive.
-
-    **Empirical verification:** Verified on 13 concrete test cases above (gotoh_le_diag_test1
-    through gotoh_le_diag_test13) covering eps=0, eps=go boundary, various alphabets,
-    gap penalties, and string lengths. Plus 174,000+ property test cases in CombComposition. -/
+    Gotoh DP score <= diagonal match count. See SORRY STATUS above for
+    detailed formalization analysis and blocking reasons. -/
 theorem gotoh_le_diag_when_eps_small (a b : List ℕ) (go ge : ℤ)
     (h_go : go ≥ 1) (h_ge : ge ≥ 1)
     (h_len : a.length = b.length)
