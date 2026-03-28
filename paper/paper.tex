@@ -1039,12 +1039,16 @@ $\bigO(m\varepsilon)$ extraction).
 Two statements remain unproved in the mechanization:
 the cell-level simulation invariant underlying the crossing-count--LCS
 equivalence (the inductive step of Tiskin's Theorem~4.10~\cite{tiskin2022book}),
-and the bridge connecting the correction formula to the concrete Gotoh~DP
-computation.
-Both are verified exhaustively by testing
+and two bridge lemmas connecting the correction formula to the concrete Gotoh~DP
+computation (the column-recursive/fold equivalence and the upper bound
+when $\varepsilon \le g_o$).
+The score determination theorem is structurally proved: the
+$\varepsilon > g_o$ case is definitional, and the $\varepsilon \le g_o$ case
+reduces to the two bridge lemmas via the diagonal feasibility argument.
+All unproved statements are verified exhaustively by testing
 (174{,}000 and 17 cases respectively with zero failures)
 but their full formal proofs require novel techniques for
-relating global comb state to windowed DP simultaneously.
+relating fold-based list computations to recursive cell definitions.
 
 \begin{thebibliography}{99}
 
