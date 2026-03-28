@@ -27,10 +27,15 @@
 
   SORRY STATUS (1 remaining):
   1. gotoh_le_diag_when_eps_small: when eps <= go, Gotoh score <= diagCount
-     Mathematical proof: any non-diagonal path opens >= 1 gap (costing >= go);
-     max extra matches = eps <= go; net benefit <= 0; so score <= diag.
-     Formalization requires alignment path decomposition of Gotoh DP fold.
-     Verified on 17+ concrete test cases via native_decide.
+     Mathematical argument (sound): any non-diagonal path opens >= 1 gap
+     (costing >= go); max extra matches = eps <= go; net benefit <= 0;
+     so score <= diag. Formalization blocked by: the fold-based Gotoh DP
+     does not expose alignment paths. Three potential approaches identified:
+     (a) Define alignment paths + prove DP computes max over paths
+     (b) Prove tight inductive invariant on (k,k) diagonal trace
+     (c) Prove Gotoh score monotonicity in go + show diagonal dominates at go=LCS
+     All require substantial formalization (~200+ lines).
+     Verified on 30+ concrete test cases via native_decide.
 
   Paper reference: Theorem 1 (Score Determination)
 -/
@@ -255,6 +260,71 @@ theorem lcs_ge_diag_test2 : lcsDP [0,1,0,1] [1,0,1,0] ≥ diagCount [0,1,0,1] [1
 theorem lcs_ge_diag_test3 : lcsDP [0,0,0] [1,1,1] ≥ diagCount [0,0,0] [1,1,1] := by native_decide
 theorem lcs_ge_diag_test4 : lcsDP [0,1,2,0] [0,2,1,0] ≥ diagCount [0,1,2,0] [0,2,1,0] := by native_decide
 theorem lcs_ge_diag_test5 : lcsDP [0,0,0,1] [1,0,0,0] ≥ diagCount [0,0,0,1] [1,0,0,0] := by native_decide
+
+/-! ## Empirical Verification: gotoh_le_diag_when_eps_small
+
+Direct verification that when epsilon <= go, gotohGlobalScore <= diagCount.
+Tests cover: eps=0, eps=go (boundary), eps=go-1, various alphabets,
+high extension penalties, all-mismatch, and longer strings. -/
+
+/-- eps=0, exact match: score=3, diag=3 -/
+theorem gotoh_le_diag_test1 :
+    gotohGlobalScore [0,1,0] [0,1,0] 2 1 ≤ (diagCount [0,1,0] [0,1,0] : ℤ) := by native_decide
+
+/-- eps=0, all mismatch: score=0, diag=0 -/
+theorem gotoh_le_diag_test2 :
+    gotohGlobalScore [0,0,0] [1,1,1] 1 1 ≤ (diagCount [0,0,0] [1,1,1] : ℤ) := by native_decide
+
+/-- eps=3=go (boundary): score=0, diag=0 -/
+theorem gotoh_le_diag_test3 :
+    gotohGlobalScore [0,1,0,1] [1,0,1,0] 3 1 ≤ (diagCount [0,1,0,1] [1,0,1,0] : ℤ) := by native_decide
+
+/-- eps=3 < go=4: score=0, diag=0 -/
+theorem gotoh_le_diag_test4 :
+    gotohGlobalScore [0,1,0,1] [1,0,1,0] 4 1 ≤ (diagCount [0,1,0,1] [1,0,1,0] : ℤ) := by native_decide
+
+/-- eps=1=go, rotation: score=2, diag=2 -/
+theorem gotoh_le_diag_test5 :
+    gotohGlobalScore [0,0,0,1] [1,0,0,0] 1 1 ≤ (diagCount [0,0,0,1] [1,0,0,0] : ℤ) := by native_decide
+
+/-- eps=1 < go=2: score=2, diag=2 -/
+theorem gotoh_le_diag_test6 :
+    gotohGlobalScore [0,0,0,1] [1,0,0,0] 2 1 ≤ (diagCount [0,0,0,1] [1,0,0,0] : ℤ) := by native_decide
+
+/-- 3-letter alphabet, eps=1 <= go=2: score=2, diag=2 -/
+theorem gotoh_le_diag_test7 :
+    gotohGlobalScore [0,1,2,0] [0,2,1,0] 2 1 ≤ (diagCount [0,1,2,0] [0,2,1,0] : ℤ) := by native_decide
+
+/-- high ge penalty, eps=3=go: score=0, diag=0 -/
+theorem gotoh_le_diag_test8 :
+    gotohGlobalScore [0,1,0,1] [1,0,1,0] 3 5 ≤ (diagCount [0,1,0,1] [1,0,1,0] : ℤ) := by native_decide
+
+/-- longer strings, eps=5=go: score=0, diag=0 -/
+theorem gotoh_le_diag_test9 :
+    gotohGlobalScore [0,1,0,1,0,1] [1,0,1,0,1,0] 5 1 ≤
+    (diagCount [0,1,0,1,0,1] [1,0,1,0,1,0] : ℤ) := by native_decide
+
+/-- 5-char exact match, eps=0: score=5, diag=5 -/
+theorem gotoh_le_diag_test10 :
+    gotohGlobalScore [0,1,0,1,0] [0,1,0,1,0] 2 1 ≤
+    (diagCount [0,1,0,1,0] [0,1,0,1,0] : ℤ) := by native_decide
+
+/-- single char match, eps=0: score=1, diag=1 -/
+theorem gotoh_le_diag_test11 :
+    gotohGlobalScore [0] [0] 1 1 ≤ (diagCount [0] [0] : ℤ) := by native_decide
+
+/-- single char mismatch, eps=0: score=0, diag=0 -/
+theorem gotoh_le_diag_test12 :
+    gotohGlobalScore [0] [1] 1 1 ≤ (diagCount [0] [1] : ℤ) := by native_decide
+
+/-- empty strings: score=0, diag=0 -/
+theorem gotoh_le_diag_test13 :
+    gotohGlobalScore [] [] 1 1 ≤ (diagCount [] [] : ℤ) := by native_decide
+
+/-- go=2, ge=2, eps=3>go=2: NOT in scope (eps > go), included for contrast -/
+theorem gotoh_le_diag_test14_outofscope :
+    -- When eps > go, the bound may not hold (this is Tier 3)
+    (lcsDP [0,1,0,1] [1,0,1,0] : ℤ) - (diagCount [0,1,0,1] [1,0,1,0] : ℤ) > 2 := by native_decide
 
 /-! ## Bridge Lemmas for Score Determination
 
@@ -664,8 +734,28 @@ theorem gotoh_ge_diag (a b : List ℕ) (go ge : ℤ)
 /-- **Bridge Lemma 2 (gotoh_le_diag_when_eps_small)**: When epsilon <= go,
     Gotoh DP score <= diagonal match count.
 
-    Any alignment path with >= 1 gap opening scores at most LCS - go <= diag.
-    The gap-free path scores diagCount. So gotohGlobalScore <= diag. -/
+    **Mathematical argument (sound, not yet formalized):**
+    Any alignment path from (0,0) to (m,m) with |a|=|b|=m falls into two cases:
+    1. The gap-free (diagonal) path: scores exactly diagCount.
+    2. Any path with ≥ 1 gap opening: pays ≥ go in gap penalties, gains ≤ LCS matches.
+       So score ≤ LCS - go = diagCount + ε - go ≤ diagCount (since ε ≤ go).
+    Therefore gotohGlobalScore = max(case1, case2) ≤ diagCount.
+
+    **Formalization challenge:**
+    The Gotoh DP is defined via fold (gotohProcessRow), not as an explicit max over
+    alignment paths. Connecting the fold-based DP to path-based reasoning requires either:
+    (a) Defining alignment paths, their scores, and proving the DP computes the max —
+        essentially reproving the correctness of the Gotoh DP (substantial formalization).
+    (b) Proving a tight inductive invariant on the DP trace that implies the bound —
+        this is blocked by the fact that H[k][k] mixes diagonal and gapped contributions,
+        and the eps ≤ go condition is global, not per-step.
+    (c) Proving Gotoh score monotonicity in go (increasing go decreases score),
+        then showing gotohGlobalScore at go = lcsDP equals diagCount — still requires
+        showing the diagonal path dominates when gaps are prohibitively expensive.
+
+    **Empirical verification:** Verified on 13 concrete test cases above (gotoh_le_diag_test1
+    through gotoh_le_diag_test13) covering eps=0, eps=go boundary, various alphabets,
+    gap penalties, and string lengths. Plus 174,000+ property test cases in CombComposition. -/
 theorem gotoh_le_diag_when_eps_small (a b : List ℕ) (go ge : ℤ)
     (h_go : go ≥ 1) (h_ge : ge ≥ 1)
     (h_len : a.length = b.length)
