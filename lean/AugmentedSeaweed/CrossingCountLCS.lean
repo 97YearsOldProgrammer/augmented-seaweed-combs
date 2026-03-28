@@ -396,6 +396,21 @@ theorem lcsDpRow_getD_eq_lcsDp (a : List ℕ) (b_win : List ℕ) :
     (lcsDpRow a b_win).getD b_win.length 0 = lcsDp a b_win := by
   simp [lcsDpRow, lcsDp, lcsDpStep]
 
+/-- lcsDpRow prefix property: dp[j] = lcsDp(a, b_win[0:j]).
+    The DP value at position j only depends on the first j characters of b_win.
+    Verified exhaustively: 2,240 cases, 0 failures (alphabet {0,1}, |a|≤2, |b|≤4). -/
+theorem lcsDpRow_getD_prefix (a : List ℕ) (b_win : List ℕ) (j : ℕ)
+    (hj : j ≤ b_win.length) :
+    (lcsDpRow a b_win).getD j 0 = lcsDp a (b_win.take j) := by
+  -- Strategy: prove (lcsDpRow a b_win).getD j 0 = (lcsDpRow a (b_win.take j)).getD j 0,
+  -- then apply lcsDpRow_getD_eq_lcsDp to b_win.take j.
+  -- Step 1: locality (DP at position j only depends on b_win[0..j-1])
+  -- Step 2: lcsDpRow_getD_eq_lcsDp gives getD j 0 = lcsDp a (b_win.take j) for
+  --         b_win.take j with length j.
+  -- BLOCKED: requires lcsDpStep locality lemma (lcsDpStepPartial truncation
+  -- invariance). This is a ~50 line helper about the fold structure of lcsDpStep.
+  sorry
+
 /-- lcsDpRow for a ++ [ch] = lcsDpStep ch applied to lcsDpRow a. -/
 theorem lcsDpRow_append_singleton (a : List ℕ) (ch : ℕ) (b_win : List ℕ) :
     lcsDpRow (a ++ [ch]) b_win = lcsDpStep ch b_win (lcsDpRow a b_win) := by
@@ -521,7 +536,31 @@ def ColSimInv (d_col_k : List ℕ)
     For every window [s,s+w) containing column k:
       d_row_k > k-s  ↔  dp_new[k-s+1] > dp_new[k-s]
     This connects the comb's d_row value to the DP cell computation at position k.
-    At k=0, the invariant is vacuously True (d_row hasn't yet interacted with the comb). -/
+    At k=0, the invariant is vacuously True (d_row hasn't yet interacted with the comb).
+
+    **WARNING (discovered 2026-03-28):** This invariant is INCORRECTLY FORMULATED.
+    The iff does NOT hold for all windows simultaneously. Counterexample:
+      a_prev = [], ch = 1, b = [1, 2], d_row_init = 1
+    After processing column 0 (match: ch=1=b[0]):
+      d_row becomes dc+1 = 0+1 = 1
+    DRowInv at k+1=1 for window [1,2) (s=1, w=1, j=0):
+      LHS: 1 > 0 = True
+      RHS: dp_new[1] > dp_new[0] where dp_new = lcsDpStep(1, [2], [0,0])
+           = 0 > 0 = False
+      iff fails: True ↔ False
+
+    Exhaustive verification: DRowInv fails in 35.4% of 196,920 cases
+    (alphabet {0,1,2}, |a_prev|<=3, |b|<=5). The underlying issue is that
+    d_row is a global comb state that does not have a per-window iff
+    relationship with the DP.
+
+    However, ColSimInv Part A IS correct (verified: 1,176,201 cases, 0 failures).
+    The proof just needs a different strategy for the new-position case (s+j=k).
+
+    DRowInv is kept as-is for now to avoid restructuring the proof. The sorry's
+    that produce DRowInv at k+1 (lines 1084, 1131, 1154) are UNPROVABLE because
+    DRowInv at k+1 is false in general. The sorry's that consume DRowInv (Part A
+    match/swap k>0) are valid uses of a false hypothesis provided by sorry. -/
 def DRowInv (b : List ℕ) (a_prev : List ℕ) (ch : ℕ)
     (k : ℕ) (d_row_k : ℕ) : Prop :=
   0 < k →
@@ -967,16 +1006,31 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
     DRowInv b a_prev ch (k + 1) step.2 := by
   /- PROOF STRATEGY:
      Part 1 (ColSimInv at k+1):
-     - Part A at old positions (s+j < k): follows from IH via getD_set_ne
-     - Part A at new position (s+j = k): follows from DRowInv (hdr) for match/swap,
-       and from combEncodes_per_position for stay
-     - Part C (positions j >= k+1): follows from getD_set_ne + IH's Part C
+     - Part A at old positions (s+j < k): follows from IH via getD_set_ne ✓
+     - Part A at new position (s+j = k): follows from DRowInv (hdr) for match/swap k>0,
+       direct DP argument for match k=0. Swap k=0 and stay: OPEN (see below). ✓ partial
+     - Part C (positions j >= k+1): follows from getD_set_ne + IH's Part C ✓
 
      Part 2 (DRowInv at k+1):
-     - Needs to show the new d_row value relates correctly to dp at column k+1
-     - New d_row = dc + 1 (match/swap) or d_row_k + 1 (stay)
+     - DISCOVERY (2026-03-28): DRowInv is incorrectly formulated.
+       The iff d_row > j ↔ dp_new[j+1] > dp_new[j] does NOT hold for all windows.
+       Counterexample: a_prev=[], ch=1, b=[1,2], k=0, window [1,2).
+       Exhaustive check: DRowInv fails in 35.4% of 196,920 cases.
+     - The 3 DRowInv preservation sorry's are UNPROVABLE.
+     - ColSimInv Part A IS correct (1.17M cases, 0 failures) — needs different proof strategy.
+     - The match/swap k>0 closures (lines using `exact hdr_inst`) are sound only if
+       DRowInv at k is correct, which depends on the DRowInv sorry at k (from previous step).
 
-     Empirically verified on 174K+ cases with 0 failures. -/
+     ALTERNATIVE APPROACH NEEDED:
+     - Remove DRowInv from the induction loop
+     - Prove Part A at new position directly via:
+       (a) Match case: dp_new[j+1] = dp_old[j]+1 (match at position j), relate to d_row_k
+       (b) Swap case: use combEncodes_per_position + dc > d_row_k to derive Part A
+       (c) Stay case: d_col_orig[k] unchanged, use combEncodes_per_position + DP recurrence
+     - Infrastructure needed: lcsDpRow_getD_prefix (dp[j] = lcsDp a (b_win.take j))
+
+     ColSimInv Part A empirically verified on 1,176,201 cases with 0 failures.
+     ScoreDetermination sorry unchanged (alignment path formalization needed). -/
   obtain ⟨hA_old, hC_old⟩ := hinv
   -- Determine which branch colFoldStep takes and extract the new d_col value
   set dc := d_col_k.getD k 0 with hdc_def
@@ -1081,6 +1135,11 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
         rw [this]
         exact hC_old j (by omega)
     · -- DRowInv at k+1 (match case: d_row_{k+1} = dc + 1)
+      -- UNPROVABLE: DRowInv is incorrectly formulated (see DRowInv docstring).
+      -- The iff fails for windows [s,s+w) where s = k+1 (window starts after
+      -- column k). d_row = dc+1 > 0 is always True, but dp_new[1] > dp_new[0]
+      -- for that window depends on whether ch matches b[k+1], which is independent
+      -- of the match at column k.
       sorry
   · split
     · -- Case 2: Mismatch + swap (dc > d_row_k)
@@ -1121,13 +1180,20 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
               -- In the swap case: dc > d_row_k, dc = d_col_orig.getD 0 0
               -- combEncodes_per_position gives: d_col_orig.getD 0 0 > 0 ↔ dp_old[1] > dp_old[0] = 0
               -- So dp_old[1] > 0. And dp_new[1] ≥ dp_old[1] (prev dominance from DP properties).
-              sorry -- swap k=0: dp_new[1] > dp_new[0] and d_row_k > 0 ↔ iff
+              -- swap k=0: need d_row_k > 0 ↔ dp_new[1] > dp_new[0]
+              -- Both sides True: d_row_k > 0 from hdr_pos; dp_new[1] > 0 from
+              -- dc > 0 → (CombEncodes) dp_old[1] > 0 → dp_new[1] ≥ dp_old[1] > 0.
+              -- BLOCKED: requires lcsDpRow_getD_prefix lemma connecting
+              -- dp_old.getD 1 0 to lcsDp a_prev (b_win.take 1).
+              sorry
         · intro j hj
           have : (d_col_k.set k d_row_k).getD j 0 = d_col_k.getD j 0 :=
             hset_ne d_row_k j (by omega)
           rw [this]
           exact hC_old j (by omega)
       · -- DRowInv at k+1 (swap case: d_row_{k+1} = dc + 1)
+        -- UNPROVABLE: DRowInv is incorrectly formulated (see DRowInv docstring).
+        -- Same issue as match case: fails for windows starting after column k.
         sorry
     · -- Case 3: Mismatch + stay (dc ≤ d_row_k)
       rename_i hmismatch hstay
@@ -1144,13 +1210,36 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
             have : (d_col_k.set k dc).getD (s + j) 0 = dc := by
               rw [hsjek]; exact hset_eq dc
             rw [this, hdc_def, hC_old k (le_refl k)]
-            sorry -- Part A new: d_col_orig.getD k 0 > j iff dp_new[j+1] > dp_new[j] (stay)
+            -- Part A new (stay case): d_col_orig.getD k 0 > j iff dp_new[j+1] > dp_new[j]
+            -- In the stay case: ch != b[k] (mismatch), dc <= d_row_k.
+            -- d_col[k] stays as dc = d_col_orig.getD k 0 (by Part C).
+            -- Need: d_col_orig.getD k 0 > j iff dp_new[j+1] > dp_new[j]
+            -- where j = k-s, b_win = b[s:s+w], dp_new = lcsDpStep ch b_win dp_old.
+            --
+            -- By combEncodes_per_position (for a_prev encoding):
+            --   d_col_orig.getD (s+j) 0 > j iff dp_OLD[j+1] > dp_OLD[j]
+            -- where dp_OLD = lcsDpRow a_prev b_win.
+            --
+            -- The stay case mismatch at position j of b_win:
+            --   dp_NEW[j+1] = max(dp_OLD[j+1], dp_NEW[j])
+            --
+            -- Need: dp_OLD[j+1] > dp_OLD[j] iff max(dp_OLD[j+1], dp_NEW[j]) > dp_NEW[j]
+            --     = dp_OLD[j+1] > dp_OLD[j] iff dp_OLD[j+1] > dp_NEW[j]
+            --
+            -- This iff requires: dp_OLD[j] >= dp_NEW[j] or dp_OLD[j] < dp_NEW[j] analysis.
+            -- The key fact: dp_NEW[j] = dp value from processing positions 0..j-1 with ch,
+            -- and dp_OLD[j] = dp value from processing positions 0..j-1 with a_prev only.
+            -- In general dp_NEW[j] >= dp_OLD[j] (prev dominance).
+            -- BLOCKED: requires lcsDpRow_getD_prefix + careful DP recurrence analysis.
+            sorry
         · intro j hj
           have : (d_col_k.set k dc).getD j 0 = d_col_k.getD j 0 :=
             hset_ne dc j (by omega)
           rw [this]
           exact hC_old j (by omega)
       · -- DRowInv at k+1 (stay case: d_row_{k+1} = d_row_k + 1)
+        -- UNPROVABLE: DRowInv is incorrectly formulated (see DRowInv docstring).
+        -- Same issue as match/swap cases: fails for windows starting after column k.
         sorry
 
 /-! ### The Row Step Theorem -/
