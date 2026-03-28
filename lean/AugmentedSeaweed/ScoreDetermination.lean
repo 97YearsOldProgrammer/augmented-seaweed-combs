@@ -19,26 +19,23 @@
 
   Proof structure:
   - score_determination splits into eps > go (rfl) and eps <= go (bridge lemmas)
-  - gotoh_ge_diag: Gotoh DP >= diagCount (diagonal path is feasible)
-  - gotoh_le_diag_when_eps_small: when eps <= go, Gotoh DP <= diagCount
-  - Both bridge lemmas are proved modulo gotohCellH_eq_processRow
-    (equivalence between column-recursive and fold-based Gotoh DP computation)
+  - gotoh_ge_diag: Gotoh DP >= diagCount (diagonal path is feasible) -- PROVED
+  - gotoh_le_diag_when_eps_small: when eps <= go, Gotoh DP <= diagCount -- sorry
+  - gotohCellH_eq_processRow: column-recursive H = fold-based H -- PROVED
+    (proved via fold decomposition infrastructure: gotohRowFoldStep, gotohRowFoldAfterK,
+     head_eq invariant, getD on unreversed list, getD_reverse to connect to reversed output)
 
-  SORRY STATUS (2 remaining):
-  1. gotohCellH_eq_processRow: column-recursive H = fold-based H
-     Mathematical proof: by induction on col, the fold step produces the same
-     values as the recursive definition (same recurrence, same base case).
-     Formalization blocked by List.foldl decomposition infrastructure.
-  2. gotoh_le_diag_when_eps_small: when eps <= go, Gotoh score <= diagCount
+  SORRY STATUS (1 remaining):
+  1. gotoh_le_diag_when_eps_small: when eps <= go, Gotoh score <= diagCount
      Mathematical proof: any non-diagonal path opens >= 1 gap (costing >= go);
      max extra matches = eps <= go; net benefit <= 0; so score <= diag.
      Formalization requires alignment path decomposition of Gotoh DP fold.
-
-  Both statements are verified on 17+ concrete test cases via native_decide.
+     Verified on 17+ concrete test cases via native_decide.
 
   Paper reference: Theorem 1 (Score Determination)
 -/
 import Mathlib.Tactic
+import Mathlib.Data.List.GetD
 import AugmentedSeaweed.Basic
 import AugmentedSeaweed.Observer
 import AugmentedSeaweed.PathSeparation
@@ -400,12 +397,187 @@ theorem gotohCellH_ge_diag (prev : GotohRow) (ai : ℕ) (b : List ℕ) (go ge : 
   simp only [gotohCellH, Nat.add_sub_cancel]
   exact le_max_left _ _
 
+/-! ### Fold infrastructure for gotohCellH_eq_processRow
+
+The fold in gotohProcessRow builds lists by prepending, then reverses.
+We define the fold step and state after k steps, then prove the invariant:
+after k fold steps, the head of the H list equals gotohCellH at column k. -/
+
+/-- The fold step function used in gotohProcessRow, extracted for reasoning. -/
+def gotohRowFoldStep (prev : GotohRow) (ai : ℕ) (b : List ℕ) (go ge : ℤ)
+    (acc : List ℤ × List ℤ × List ℤ) (jIdx : ℕ) : List ℤ × List ℤ × List ℤ :=
+  let j := jIdx + 1
+  let bChar := b.getD jIdx 0
+  let h_prev_j := prev.h.getD j 0
+  let h_prev_j1 := prev.h.getD (j - 1) 0
+  let h_curr_j1 := acc.1.head!
+  let f_curr_j1 := acc.2.2.head!
+  let matchScore : ℤ := if ai == bChar then 1 else 0
+  let diag := h_prev_j1 + matchScore
+  let e_prev_j := prev.e.getD j NEG_INF
+  let eij := max (h_prev_j - go) (e_prev_j - ge)
+  let fij := max (h_curr_j1 - go) (f_curr_j1 - ge)
+  let hij := max diag (max eij fij)
+  (hij :: acc.1, eij :: acc.2.1, fij :: acc.2.2)
+
+/-- The fold state after k steps of gotohProcessRow. -/
+def gotohRowFoldAfterK (prev : GotohRow) (ai : ℕ) (b : List ℕ) (go ge : ℤ) (row : ℕ)
+    (k : ℕ) : List ℤ × List ℤ × List ℤ :=
+  let h0 : ℤ := -(go + ge * ((row : ℤ) - 1))
+  let e0 : ℤ := h0
+  let f0 : ℤ := NEG_INF
+  let init : List ℤ × List ℤ × List ℤ := ([h0], [e0], [f0])
+  (List.range k).foldl (gotohRowFoldStep prev ai b go ge) init
+
+/-- gotohProcessRow result equals fold-after-n with reversal. -/
+theorem gotohProcessRow_eq_foldAfterN (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row : ℕ) :
+    (gotohProcessRow prev ai b go ge row).h =
+    (gotohRowFoldAfterK prev ai b go ge row b.length).1.reverse := by
+  unfold gotohProcessRow gotohRowFoldAfterK gotohRowFoldStep
+  rfl
+
+/-- The fold step adds exactly one element to the H list. -/
+theorem gotohRowFoldStep_h_length (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (acc : List ℤ × List ℤ × List ℤ) (jIdx : ℕ) :
+    (gotohRowFoldStep prev ai b go ge acc jIdx).1.length = acc.1.length + 1 := by
+  simp [gotohRowFoldStep, List.length_cons]
+
+/-- The fold step adds exactly one element to the F list. -/
+theorem gotohRowFoldStep_f_length (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (acc : List ℤ × List ℤ × List ℤ) (jIdx : ℕ) :
+    (gotohRowFoldStep prev ai b go ge acc jIdx).2.2.length = acc.2.2.length + 1 := by
+  simp [gotohRowFoldStep, List.length_cons]
+
+/-- After k fold steps, the H list has length k + 1. -/
+theorem gotohRowFoldAfterK_h_length (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row k : ℕ) :
+    (gotohRowFoldAfterK prev ai b go ge row k).1.length = k + 1 := by
+  induction k with
+  | zero => simp [gotohRowFoldAfterK]
+  | succ n ih =>
+    -- Rewrite in terms of the step
+    have h_eq : gotohRowFoldAfterK prev ai b go ge row (n + 1) =
+        gotohRowFoldStep prev ai b go ge (gotohRowFoldAfterK prev ai b go ge row n) n := by
+      unfold gotohRowFoldAfterK
+      rw [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+    rw [h_eq, gotohRowFoldStep_h_length, ih]
+
+/-- After k fold steps, the F list has length k + 1. -/
+theorem gotohRowFoldAfterK_f_length (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row k : ℕ) :
+    (gotohRowFoldAfterK prev ai b go ge row k).2.2.length = k + 1 := by
+  induction k with
+  | zero => simp [gotohRowFoldAfterK, NEG_INF]
+  | succ n ih =>
+    have h_eq : gotohRowFoldAfterK prev ai b go ge row (n + 1) =
+        gotohRowFoldStep prev ai b go ge (gotohRowFoldAfterK prev ai b go ge row n) n := by
+      unfold gotohRowFoldAfterK
+      rw [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+    rw [h_eq, gotohRowFoldStep_f_length, ih]
+
+/-- The fold step relation: fold-after-(k+1) = foldStep applied to fold-after-k. -/
+theorem gotohRowFoldAfterK_step (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row k : ℕ) :
+    gotohRowFoldAfterK prev ai b go ge row (k + 1) =
+    gotohRowFoldStep prev ai b go ge (gotohRowFoldAfterK prev ai b go ge row k) k := by
+  unfold gotohRowFoldAfterK
+  rw [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+
+/-- Key invariant: after k fold steps, the head of the H list is gotohCellH at column k,
+    and the head of the F list is gotohCellF at column k.
+    Both proved simultaneously since H and F are mutually recursive. -/
+theorem gotohRowFoldAfterK_head_eq (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row k : ℕ) :
+    (gotohRowFoldAfterK prev ai b go ge row k).1.head! = gotohCellH prev ai b go ge row k ∧
+    (gotohRowFoldAfterK prev ai b go ge row k).2.2.head! = gotohCellF prev ai b go ge row k := by
+  induction k with
+  | zero =>
+    constructor
+    · simp [gotohRowFoldAfterK, gotohCellH]
+    · simp [gotohRowFoldAfterK, gotohCellF, NEG_INF]
+  | succ n ih =>
+    obtain ⟨ih_h, ih_f⟩ := ih
+    rw [gotohRowFoldAfterK_step prev ai b go ge row n]
+    constructor
+    · -- Head of H list after step n: fold step prepends hij, so head! = hij
+      simp only [gotohRowFoldStep, List.head!_cons]
+      -- Need to show the fold step computation = gotohCellH (n+1)
+      -- The fold step at jIdx=n computes:
+      --   hij = max(diag, max(eij, fij))
+      -- where diag uses prev.h.getD n 0, fij uses head! of H and F lists
+      -- gotohCellH (n+1) expands to the same computation with gotohCellH n and gotohCellF n
+      -- By IH: head! H = gotohCellH n, head! F = gotohCellF n
+      conv_rhs => rw [gotohCellH]
+      simp only [Nat.add_sub_cancel]
+      rw [← ih_h, ← ih_f]
+    · -- Head of F list after step n
+      simp only [gotohRowFoldStep, List.head!_cons]
+      conv_rhs => rw [gotohCellF]
+      rw [← ih_h, ← ih_f]
+
+/-- The fold accumulator at position (k - col) in the unreversed list equals gotohCellH col.
+    Equivalently: after reversal, position col gives gotohCellH col.
+    We prove the unreversed version and use List.getD_reverse to connect. -/
+theorem gotohRowFoldAfterK_getD (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row k col : ℕ) (hcol : col ≤ k) :
+    (gotohRowFoldAfterK prev ai b go ge row k).1.getD (k - col) NEG_INF =
+    gotohCellH prev ai b go ge row col := by
+  -- The fold accumulator after k steps has the form [H_k, H_{k-1}, ..., H_0].
+  -- Position (k - col) gives H_col = gotohCellH col.
+  -- Prove by induction on k.
+  induction k with
+  | zero =>
+    have hcol0 : col = 0 := by omega
+    subst hcol0
+    simp [gotohRowFoldAfterK, gotohCellH]
+  | succ n ih =>
+    rw [gotohRowFoldAfterK_step]
+    -- After step: (newH :: old.1), so position 0 is newH, position (j+1) is old[j]
+    by_cases hcol_eq : col = n + 1
+    · -- col = n + 1: position 0 in the prepended list = gotohCellH (n+1)
+      subst hcol_eq
+      -- The goal is: (gotohRowFoldStep ... n).1.getD 0 NEG_INF = gotohCellH ... (n+1)
+      -- Position 0 after prepending = the prepended value = gotohCellH (n+1)
+      -- Use unfold to expose both sides equally
+      simp only [Nat.sub_self]
+      -- Unfold both sides to their computational content
+      unfold gotohRowFoldStep gotohCellH
+      simp only [Nat.add_sub_cancel, List.getD, List.getElem?_cons_zero, Option.getD_some]
+      -- Now both sides should use the same form; connect head! via IH
+      have ⟨ih_h, ih_f⟩ := gotohRowFoldAfterK_head_eq prev ai b go ge row n
+      rw [← ih_h, ← ih_f]
+    · -- col ≤ n: position (n+1-col) in the prepended list = position (n-col) in old
+      have hcol_le_n : col ≤ n := by omega
+      have h_pos : n + 1 - col = (n - col) + 1 := by omega
+      rw [h_pos]
+      simp only [gotohRowFoldStep, List.getD, List.getElem?_cons_succ]
+      exact ih hcol_le_n
+
+/-- For the fold accumulator, reverse.getD col = gotohCellH col. -/
+theorem gotohRowFoldAfterK_reverse_getD (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row k col : ℕ) (hcol : col ≤ k) :
+    (gotohRowFoldAfterK prev ai b go ge row k).1.reverse.getD col NEG_INF =
+    gotohCellH prev ai b go ge row col := by
+  -- Use getD_reverse to convert to unreversed access
+  have h_len := gotohRowFoldAfterK_h_length prev ai b go ge row k
+  have h_col_lt : col < (gotohRowFoldAfterK prev ai b go ge row k).1.length := by
+    rw [h_len]; omega
+  rw [List.getD_reverse col h_col_lt]
+  -- Now goal: getD (foldAfterK k).1 ((foldAfterK k).1.length - 1 - col) NEG_INF = gotohCellH col
+  rw [h_len]
+  -- goal: getD (foldAfterK k).1 (k + 1 - 1 - col) NEG_INF = gotohCellH col
+  have : k + 1 - 1 - col = k - col := by omega
+  rw [this]
+  exact gotohRowFoldAfterK_getD prev ai b go ge row k col hcol
+
 /-- The column-recursive H values equal the gotohProcessRow output. -/
 theorem gotohCellH_eq_processRow (prev : GotohRow) (ai : ℕ) (b : List ℕ)
     (go ge : ℤ) (row col : ℕ) (hcol : col ≤ b.length) :
     gotohCellH prev ai b go ge row col =
     (gotohProcessRow prev ai b go ge row).h.getD col NEG_INF := by
-  sorry
+  rw [gotohProcessRow_eq_foldAfterN]
+  exact (gotohRowFoldAfterK_reverse_getD prev ai b go ge row b.length col hcol).symm
 
 theorem gotohProcessRow_diag_ge (prev : GotohRow) (ai : ℕ) (b : List ℕ)
     (go ge : ℤ) (row col : ℕ)
