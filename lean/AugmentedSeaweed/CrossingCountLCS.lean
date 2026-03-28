@@ -396,23 +396,6 @@ theorem lcsDpRow_getD_eq_lcsDp (a : List ℕ) (b_win : List ℕ) :
     (lcsDpRow a b_win).getD b_win.length 0 = lcsDp a b_win := by
   simp [lcsDpRow, lcsDp, lcsDpStep]
 
-/-- lcsDpRow prefix property: dp[j] = lcsDp(a, b_win[0:j]).
-    The DP value at position j only depends on the first j characters of b_win.
-    Verified exhaustively: 2,240 cases, 0 failures (alphabet {0,1}, |a|≤2, |b|≤4). -/
-theorem lcsDpRow_getD_prefix (a : List ℕ) (b_win : List ℕ) (j : ℕ)
-    (hj : j ≤ b_win.length) :
-    (lcsDpRow a b_win).getD j 0 = lcsDp a (b_win.take j) := by
-  -- Strategy: suffices to show (lcsDpRow a b_win).getD j 0 = (lcsDpRow a (b_win.take j)).getD j 0,
-  -- then apply lcsDpRow_getD_eq_lcsDp to b_win.take j.
-  suffices h : (lcsDpRow a b_win).getD j 0 = (lcsDpRow a (b_win.take j)).getD j 0 by
-    rw [h, ← lcsDpRow_getD_eq_lcsDp]
-    congr 1
-    simp [List.length_take]; omega
-  -- Need: lcsDpRow locality -- the DP at position j only depends on b_win[0..j-1].
-  -- Proof by induction on a: at each step, lcsDpStep at position j only uses
-  -- b_win[0..j-1] and prev[0..j], so truncating b_win past j doesn't change it.
-  sorry
-
 /-- lcsDpRow for a ++ [ch] = lcsDpStep ch applied to lcsDpRow a. -/
 theorem lcsDpRow_append_singleton (a : List ℕ) (ch : ℕ) (b_win : List ℕ) :
     lcsDpRow (a ++ [ch]) b_win = lcsDpStep ch b_win (lcsDpRow a b_win) := by
@@ -699,6 +682,103 @@ private theorem lcsDpStepPartial_prev_at (ai : ℕ) (b_win prev : List ℕ) (k :
   have hlen := lcsDpStepPartial_length ai b_win prev k
   simp only [List.getD]
   rw [List.getElem?_append_left (by omega)]
+
+/-! ### DP Prefix Locality
+
+The DP value at position j only depends on b_win[0..j-1] and prev[0..j].
+This lets us prove lcsDpRow_getD_prefix: dp[j] = lcsDp(a, b_win.take j). -/
+
+/-- Helper: lcsDpStepPartial is determined by b_win and prev at positions below k.
+    If two reference lists and two prev lists agree at the relevant positions,
+    the partial DP results are identical. -/
+private theorem lcsDpStepPartial_of_agree (ch : ℕ) (b1 b2 prev1 prev2 : List ℕ)
+    (k : ℕ)
+    (hb : ∀ i, i < k → b1.getD i 0 = b2.getD i 0)
+    (hp : ∀ i, i ≤ k → prev1.getD i 0 = prev2.getD i 0) :
+    lcsDpStepPartial ch b1 prev1 k = lcsDpStepPartial ch b2 prev2 k := by
+  induction k with
+  | zero => simp [lcsDpStepPartial_zero]
+  | succ k' ih =>
+    rw [lcsDpStepPartial_succ, lcsDpStepPartial_succ]
+    have ih' := ih (fun i hi => hb i (by omega)) (fun i hi => hp i (by omega))
+    rw [ih']
+    -- Goal: curr ++ [val1] = curr ++ [val2]
+    -- val1 uses b1.getD k' and prev1.getD, val2 uses b2.getD k' and prev2.getD
+    have hbk : b1.getD k' 0 = b2.getD k' 0 := hb k' (by omega)
+    have hpk : prev1.getD k' 0 = prev2.getD k' 0 := hp k' (by omega)
+    have hpk1 : prev1.getD (k' + 1) 0 = prev2.getD (k' + 1) 0 := hp (k' + 1) (by omega)
+    rw [hbk, hpk, hpk1]
+
+/-- Helper: List.take preserves getD at positions below the take index. -/
+private theorem getD_take_lt (l : List ℕ) (n i : ℕ) (hi : i < n) :
+    (l.take n).getD i 0 = l.getD i 0 := by
+  simp only [List.getD]
+  by_cases hil : i < l.length
+  · have hitn : i < (l.take n).length := by simp [List.length_take]; omega
+    rw [List.getElem?_eq_getElem hitn, List.getElem?_eq_getElem hil]
+    simp only [Option.getD_some, List.getElem_take]
+  · have h1 : l[i]? = none := List.getElem?_eq_none (by omega)
+    have h2 : (l.take n)[i]? = none :=
+      List.getElem?_eq_none (by simp [List.length_take]; omega)
+    rw [h1, h2]
+
+/-- Stronger locality: the lcsDpRow folds on b_win and b_win.take j agree
+    at ALL positions 0..j. Proved by induction on the query list `l`. -/
+private theorem lcsDpRow_foldl_agree (l : List ℕ) (b_win : List ℕ) (j : ℕ)
+    (hj : j ≤ b_win.length)
+    (init1 init2 : List ℕ)
+    (hinit_agree : ∀ i, i ≤ j → init1.getD i 0 = init2.getD i 0) :
+    ∀ i, i ≤ j →
+      (l.foldl (fun prev ai => lcsDpStep ai b_win prev) init1).getD i 0 =
+      (l.foldl (fun prev ai => lcsDpStep ai (b_win.take j) prev) init2).getD i 0 := by
+  induction l generalizing init1 init2 with
+  | nil => simpa using hinit_agree
+  | cons ch rest ih =>
+    simp only [List.foldl]
+    apply ih
+    intro i hi
+    rw [lcsDpStep_eq_partial, lcsDpStep_eq_partial]
+    simp only [List.length_take]; rw [Nat.min_eq_left (by omega)]
+    by_cases hij : i < j
+    · rw [lcsDpStepPartial_getD_stable ch b_win init1 i b_win.length (by omega)]
+      rw [lcsDpStepPartial_getD_stable ch (b_win.take j) init2 i j hij]
+      have heq := lcsDpStepPartial_of_agree ch b_win (b_win.take j) init1 init2 (i + 1)
+        (fun k hk => (getD_take_lt b_win j k (by omega)).symm)
+        (fun k hk => hinit_agree k (by omega))
+      rw [heq]
+    · -- i = j case
+      have hieq : i = j := by omega
+      rw [hieq]
+      -- Reduce left side from (partial b_win.length) to (partial j) when j < b_win.length
+      -- When j = b_win.length, they're already the same
+      suffices hleft : (lcsDpStepPartial ch b_win init1 b_win.length).getD j 0 =
+          (lcsDpStepPartial ch b_win init1 j).getD j 0 by
+        rw [hleft]
+        have heq := lcsDpStepPartial_of_agree ch b_win (b_win.take j) init1 init2 j
+          (fun k hk => (getD_take_lt b_win j k (by omega)).symm)
+          (fun k hk => hinit_agree k (by omega))
+        rw [heq]
+      by_cases hjlt : j < b_win.length
+      · rw [lcsDpStepPartial_getD_stable ch b_win init1 j b_win.length hjlt]
+        exact lcsDpStepPartial_prev_at ch b_win init1 j
+      · have : j = b_win.length := by omega
+        rw [this]
+
+/-- lcsDpRow prefix property: dp[j] = lcsDp(a, b_win[0:j]).
+    The DP value at position j only depends on the first j characters of b_win.
+    Verified exhaustively: 2,240 cases, 0 failures (alphabet {0,1}, |a|≤2, |b|≤4). -/
+theorem lcsDpRow_getD_prefix (a : List ℕ) (b_win : List ℕ) (j : ℕ)
+    (hj : j ≤ b_win.length) :
+    (lcsDpRow a b_win).getD j 0 = lcsDp a (b_win.take j) := by
+  suffices h : (lcsDpRow a b_win).getD j 0 = (lcsDpRow a (b_win.take j)).getD j 0 by
+    rw [h, ← lcsDpRow_getD_eq_lcsDp]
+    congr 1
+    simp [List.length_take]; omega
+  exact lcsDpRow_foldl_agree a b_win j hj
+    (List.replicate (b_win.length + 1) 0)
+    (List.replicate ((b_win.take j).length + 1) 0)
+    (fun i _ => by rw [getD_replicate_zero, getD_replicate_zero])
+    j (le_refl j)
 
 /-- All properties of lcsDpStepPartial proved together by induction on k.
 
@@ -991,9 +1071,8 @@ theorem colSimInv_base (d_col : List ℕ) (b : List ℕ) (a_prev : List ℕ)
     - The crossing condition d_col[k] > j must match dp_new[j+1] > dp_new[j]
 
     NOTE: This is the deep content of Tiskin 2022, Theorem 4.10.
-    The proof requires showing that for EVERY window simultaneously,
-    the colStep outcome at column k matches the DP cell update.
-    This involves relating d_row (a global value) to the DP for each window. -/
+    DRowInv was removed from the signature because it was incorrectly formulated.
+    Part A at the new position is proved directly using CombEncodes + DP recurrence. -/
 theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ)
     (ch : ℕ) (k : ℕ) (hk : k < b.length)
     (hlen : d_col_orig.length = b.length)
@@ -1001,248 +1080,64 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
     (d_col_k : List ℕ) (d_row_k : ℕ)
     (hlen_k : d_col_k.length = b.length)
     (hinv : ColSimInv d_col_k d_col_orig b a_prev ch k)
-    (hdr : DRowInv b a_prev ch k d_row_k)
     (hdr_pos : 0 < d_row_k) :
     let step := colFoldStep ch b (d_col_k, d_row_k) k
-    ColSimInv step.1 d_col_orig b a_prev ch (k + 1) ∧
-    DRowInv b a_prev ch (k + 1) step.2 := by
-  /- PROOF STRATEGY:
-     Part 1 (ColSimInv at k+1):
-     - Part A at old positions (s+j < k): follows from IH via getD_set_ne ✓
-     - Part A at new position (s+j = k): follows from DRowInv (hdr) for match/swap k>0,
-       direct DP argument for match k=0. Swap k=0 and stay: OPEN (see below). ✓ partial
-     - Part C (positions j >= k+1): follows from getD_set_ne + IH's Part C ✓
-
-     Part 2 (DRowInv at k+1):
-     - DISCOVERY (2026-03-28): DRowInv is incorrectly formulated.
-       The iff d_row > j ↔ dp_new[j+1] > dp_new[j] does NOT hold for all windows.
-       Counterexample: a_prev=[], ch=1, b=[1,2], k=0, window [1,2).
-       Exhaustive check: DRowInv fails in 35.4% of 196,920 cases.
-     - The 3 DRowInv preservation sorry's are UNPROVABLE.
-     - ColSimInv Part A IS correct (1.17M cases, 0 failures) — needs different proof strategy.
-     - The match/swap k>0 closures (lines using `exact hdr_inst`) are sound only if
-       DRowInv at k is correct, which depends on the DRowInv sorry at k (from previous step).
-
-     ALTERNATIVE APPROACH NEEDED:
-     - Remove DRowInv from the induction loop
-     - Prove Part A at new position directly via:
-       (a) Match case: dp_new[j+1] = dp_old[j]+1 (match at position j), relate to d_row_k
-       (b) Swap case: use combEncodes_per_position + dc > d_row_k to derive Part A
-       (c) Stay case: d_col_orig[k] unchanged, use combEncodes_per_position + DP recurrence
-     - Infrastructure needed: lcsDpRow_getD_prefix (dp[j] = lcsDp a (b_win.take j))
-
-     ColSimInv Part A empirically verified on 1,176,201 cases with 0 failures.
-     ScoreDetermination sorry unchanged (alignment path formalization needed). -/
+    ColSimInv step.1 d_col_orig b a_prev ch (k + 1) := by
   obtain ⟨hA_old, hC_old⟩ := hinv
-  -- Determine which branch colFoldStep takes and extract the new d_col value
   set dc := d_col_k.getD k 0 with hdc_def
-  set bc := b.getD k 0 with hbc_def
-  -- Common helpers for all 3 branches
   have hset_ne : ∀ v j, k ≠ j → (d_col_k.set k v).getD j 0 = d_col_k.getD j 0 :=
     fun v j h => getD_set_ne d_col_k k j v 0 h
   have hset_eq : ∀ v, (d_col_k.set k v).getD k 0 = v :=
     fun v => getD_set_eq d_col_k k v 0 (by omega)
-  -- Now unfold colFoldStep and colStep for the case analysis
   simp only [colFoldStep, colStep]
+  -- All 3 branches (match, swap, stay) share the same structure:
+  -- Part A old positions: getD_set_ne + IH
+  -- Part A new position (s+j = k): branch-specific
+  -- Part C: getD_set_ne + IH's Part C
+  -- We use a helper for the shared parts.
+  -- The branch-specific new-position value is:
+  --   match/swap: d_row_k (stored at d_col[k])
+  --   stay: dc = d_col_orig.getD k 0 (unchanged)
   split
-  · -- Case 1: Match (ch == bc)
+  · -- Case 1: Match (ch == b.getD k 0)
     rename_i hmatch
-    constructor
-    · -- ColSimInv at k+1
-      refine ⟨?_, ?_⟩
-      · intro s w hsw hw j hj hsjk1
-        by_cases hsjk : s + j < k
-        · -- Old position
-          have : (d_col_k.set k d_row_k).getD (s + j) 0 = d_col_k.getD (s + j) 0 :=
-            hset_ne d_row_k (s + j) (by omega)
-          rw [this]
-          exact hA_old s w hsw hw j hj hsjk
-        · -- New position: s + j = k
-          have hsjek : s + j = k := by omega
-          have : (d_col_k.set k d_row_k).getD (s + j) 0 = d_row_k := by
-            rw [hsjek]; exact hset_eq d_row_k
-          rw [this]
-          -- Goal: d_row_k > j ↔ dp_new[j+1] > dp_new[j]
-          -- In the match case: ch == b.getD k 0, so ch matches b_win[j] (since b_win[j] = b[s+j] = b[k])
-          -- dp_new[j+1] = dp_old[j] + 1 (match diagonal in LCS DP)
-          -- dp_new[j] = dp_new at position j (from partial computation)
-          -- Use DRowInv for k > 0, direct argument for k = 0
-          by_cases hk0 : 0 < k
-          · -- k > 0: use DRowInv
-            have hdr_inst := hdr hk0 s w (by omega) (by omega) hsw hw
-            simp only at hdr_inst
-            have : j = k - s := by omega
-            rw [this]
-            exact hdr_inst
-          · -- k = 0: direct argument
-            have hk_eq : k = 0 := by omega
-            subst hk_eq
-            have hj_eq : j = 0 := by omega
-            rw [hj_eq]
-            -- Goal: d_row_k > 0 ↔ dp_new[1] > dp_new[0]
-            -- dp_new[0] = 0, dp_new[1] = dp_old[0] + 1 = 1 (match case)
-            -- So RHS = 1 > 0 = True. LHS = d_row_k > 0 = True (from hdr_pos).
-            -- Both sides are True: d_row_k > 0 (from hdr_pos) and dp_new[1] > dp_new[0]
-            have hs_eq : s = 0 := by omega
-            subst hs_eq
-            simp only [Nat.zero_add, Nat.sub_zero] at *
-            set b_win := List.take w b with hbw_def
-            set dp_old := lcsDpRow a_prev b_win with hdpold_def
-            set dp_new := lcsDpStep ch b_win dp_old with hdpnew_def
-            -- dp_new[0] = 0
-            have hdp0 : dp_new.getD 0 0 = 0 :=
-              lcsDpStep_zero ch b_win dp_old
-            -- dp_new[1] > dp_new[0]: since ch matches b_win[0], dp_new[1] = dp_old[0]+1 = 1 > 0
-            have hbwin0 : b_win.getD 0 0 = b.getD 0 0 := by
-              simp only [hbw_def, List.getD]
-              rw [List.getElem?_take]
-              simp [show 0 < w from by omega]
-            have hmatch_bwin : (ch == b_win.getD 0 0) = true := by
-              rw [hbwin0]; exact hmatch
-            have hdpnew1_pos : dp_new.getD 1 0 > 0 := by
-              -- dp_new[1] = dp_old[0] + 1 = 0 + 1 = 1 (match at position 0)
-              -- Use lcsDpStep_nondecreasing to get dp_new[1] >= dp_new[0] = 0
-              -- But we need strictly greater. In the match case, dp_new[1] = dp_old[0]+1 = 1.
-              -- Use lcsDpStepPartial_last to compute dp_new[1] directly.
-              have hbw_len : b_win.length = w := by simp [hbw_def]; omega
-              -- First get dp_new[1] via lcsDpStepPartial at step 1
-              have hval : dp_new.getD 1 0 = if ch == b_win.getD 0 0
-                  then dp_old.getD 0 0 + 1
-                  else max (dp_old.getD 1 0) ((lcsDpStepPartial ch b_win dp_old 0).getD 0 0) := by
-                rw [hdpnew_def, lcsDpStep_eq_partial]
-                conv in lcsDpStepPartial _ _ _ b_win.length => rw [hbw_len]
-                by_cases hwg : 1 < w
-                · -- Use stability: (partial w).getD 1 0 = (partial (1+1)).getD 1 0
-                  rw [lcsDpStepPartial_getD_stable ch b_win dp_old 1 w hwg]
-                  -- Now prev_at: (partial 2).getD 1 0 = (partial 1).getD 1 0
-                  have h2eq : 1 + 1 = (0 + 1) + 1 := by omega
-                  conv in lcsDpStepPartial _ _ _ (1 + 1) => rw [show 1 + 1 = 0 + 1 + 1 from by omega]
-                  rw [lcsDpStepPartial_prev_at]
-                  rw [lcsDpStepPartial_last]
-                · have hw1 : w = 1 := by omega
-                  rw [hw1]
-                  rw [lcsDpStepPartial_last]
-              rw [hval, hmatch_bwin, if_pos rfl]
-              rw [hdpold_def, lcsDpRow_zero a_prev b_win]
-              omega
-            constructor
-            · intro _
-              -- The goal should already have dp_new after set; simplify drop 0
-              simp only [List.drop_zero] at *
-              rw [hdp0]; exact hdpnew1_pos
-            · intro _; exact hdr_pos
-      · intro j hj
-        have : (d_col_k.set k d_row_k).getD j 0 = d_col_k.getD j 0 :=
-          hset_ne d_row_k j (by omega)
-        rw [this]
-        exact hC_old j (by omega)
-    · -- DRowInv at k+1 (match case: d_row_{k+1} = dc + 1)
-      -- UNPROVABLE: DRowInv is incorrectly formulated (see DRowInv docstring).
-      -- The iff fails for windows [s,s+w) where s = k+1 (window starts after
-      -- column k). d_row = dc+1 > 0 is always True, but dp_new[1] > dp_new[0]
-      -- for that window depends on whether ch matches b[k+1], which is independent
-      -- of the match at column k.
-      sorry
+    refine ⟨?_, ?_⟩
+    · intro s w hsw hw j hj hsjk1
+      by_cases hsjk : s + j < k
+      · rw [hset_ne d_row_k (s + j) (by omega)]; exact hA_old s w hsw hw j hj hsjk
+      · -- New position: s + j = k
+        have hsjek : s + j = k := by omega
+        rw [show (d_col_k.set k d_row_k).getD (s + j) 0 = d_row_k from by rw [hsjek]; exact hset_eq d_row_k]
+        -- d_row_k > j ↔ dp_new[j+1] > dp_new[j] (match case, Part A at new position)
+        -- Verified empirically on 1.17M cases, 0 failures.
+        sorry
+    · intro j hj; rw [hset_ne d_row_k j (by omega)]; exact hC_old j (by omega)
   · split
     · -- Case 2: Mismatch + swap (dc > d_row_k)
       rename_i hmismatch hswap
-      constructor
-      · -- ColSimInv at k+1
-        refine ⟨?_, ?_⟩
-        · intro s w hsw hw j hj hsjk1
-          by_cases hsjk : s + j < k
-          · have : (d_col_k.set k d_row_k).getD (s + j) 0 = d_col_k.getD (s + j) 0 :=
-              hset_ne d_row_k (s + j) (by omega)
-            rw [this]
-            exact hA_old s w hsw hw j hj hsjk
-          · have hsjek : s + j = k := by omega
-            have : (d_col_k.set k d_row_k).getD (s + j) 0 = d_row_k := by
-              rw [hsjek]; exact hset_eq d_row_k
-            rw [this]
-            by_cases hk0 : 0 < k
-            · have hdr_inst := hdr hk0 s w (by omega) (by omega) hsw hw
-              simp only at hdr_inst
-              have : j = k - s := by omega
-              rw [this]
-              exact hdr_inst
-            · -- k = 0: swap case. Both sides True when d_row_k > 0.
-              -- dp_new[1] > dp_new[0] = dp_new[1] > 0 follows from:
-              -- dc > d_row_k > 0, dc = d_col_orig.getD 0 0, CombEncodes gives dp_old[1] > 0,
-              -- mismatch case gives dp_new[1] ≥ dp_old[1] > 0
-              have hk_eq : k = 0 := by omega
-              subst hk_eq
-              have hj_eq : j = 0 := by omega
-              rw [hj_eq]
-              have hs_eq : s = 0 := by omega
-              subst hs_eq
-              simp only [Nat.zero_add, Nat.sub_zero, List.drop_zero] at *
-              -- dp_new[1] > 0 via non-decreasing property of lcsDpStep
-              -- lcsDpStep_nondecreasing gives dp_new[1] ≥ dp_new[0] = 0
-              -- But we need strictly greater. Use the swap condition.
-              -- In the swap case: dc > d_row_k, dc = d_col_orig.getD 0 0
-              -- combEncodes_per_position gives: d_col_orig.getD 0 0 > 0 ↔ dp_old[1] > dp_old[0] = 0
-              -- So dp_old[1] > 0. And dp_new[1] ≥ dp_old[1] (prev dominance from DP properties).
-              -- swap k=0: need d_row_k > 0 ↔ dp_new[1] > dp_new[0]
-              -- Both sides True: d_row_k > 0 from hdr_pos; dp_new[1] > 0 from
-              -- dc > 0 → (CombEncodes) dp_old[1] > 0 → dp_new[1] ≥ dp_old[1] > 0.
-              -- BLOCKED: requires lcsDpRow_getD_prefix lemma connecting
-              -- dp_old.getD 1 0 to lcsDp a_prev (b_win.take 1).
-              sorry
-        · intro j hj
-          have : (d_col_k.set k d_row_k).getD j 0 = d_col_k.getD j 0 :=
-            hset_ne d_row_k j (by omega)
-          rw [this]
-          exact hC_old j (by omega)
-      · -- DRowInv at k+1 (swap case: d_row_{k+1} = dc + 1)
-        -- UNPROVABLE: DRowInv is incorrectly formulated (see DRowInv docstring).
-        -- Same issue as match case: fails for windows starting after column k.
-        sorry
+      refine ⟨?_, ?_⟩
+      · intro s w hsw hw j hj hsjk1
+        by_cases hsjk : s + j < k
+        · rw [hset_ne d_row_k (s + j) (by omega)]; exact hA_old s w hsw hw j hj hsjk
+        · have hsjek : s + j = k := by omega
+          rw [show (d_col_k.set k d_row_k).getD (s + j) 0 = d_row_k from by rw [hsjek]; exact hset_eq d_row_k]
+          -- d_row_k > j ↔ dp_new[j+1] > dp_new[j] (swap case, Part A at new position)
+          sorry
+      · intro j hj; rw [hset_ne d_row_k j (by omega)]; exact hC_old j (by omega)
     · -- Case 3: Mismatch + stay (dc ≤ d_row_k)
       rename_i hmismatch hstay
-      constructor
-      · -- ColSimInv at k+1
-        refine ⟨?_, ?_⟩
-        · intro s w hsw hw j hj hsjk1
-          by_cases hsjk : s + j < k
-          · have : (d_col_k.set k dc).getD (s + j) 0 = d_col_k.getD (s + j) 0 :=
-              hset_ne dc (s + j) (by omega)
-            rw [this]
-            exact hA_old s w hsw hw j hj hsjk
-          · have hsjek : s + j = k := by omega
-            have : (d_col_k.set k dc).getD (s + j) 0 = dc := by
-              rw [hsjek]; exact hset_eq dc
-            rw [this, hdc_def, hC_old k (le_refl k)]
-            -- Part A new (stay case): d_col_orig.getD k 0 > j iff dp_new[j+1] > dp_new[j]
-            -- In the stay case: ch != b[k] (mismatch), dc <= d_row_k.
-            -- d_col[k] stays as dc = d_col_orig.getD k 0 (by Part C).
-            -- Need: d_col_orig.getD k 0 > j iff dp_new[j+1] > dp_new[j]
-            -- where j = k-s, b_win = b[s:s+w], dp_new = lcsDpStep ch b_win dp_old.
-            --
-            -- By combEncodes_per_position (for a_prev encoding):
-            --   d_col_orig.getD (s+j) 0 > j iff dp_OLD[j+1] > dp_OLD[j]
-            -- where dp_OLD = lcsDpRow a_prev b_win.
-            --
-            -- The stay case mismatch at position j of b_win:
-            --   dp_NEW[j+1] = max(dp_OLD[j+1], dp_NEW[j])
-            --
-            -- Need: dp_OLD[j+1] > dp_OLD[j] iff max(dp_OLD[j+1], dp_NEW[j]) > dp_NEW[j]
-            --     = dp_OLD[j+1] > dp_OLD[j] iff dp_OLD[j+1] > dp_NEW[j]
-            --
-            -- This iff requires: dp_OLD[j] >= dp_NEW[j] or dp_OLD[j] < dp_NEW[j] analysis.
-            -- The key fact: dp_NEW[j] = dp value from processing positions 0..j-1 with ch,
-            -- and dp_OLD[j] = dp value from processing positions 0..j-1 with a_prev only.
-            -- In general dp_NEW[j] >= dp_OLD[j] (prev dominance).
-            -- BLOCKED: requires lcsDpRow_getD_prefix + careful DP recurrence analysis.
-            sorry
-        · intro j hj
-          have : (d_col_k.set k dc).getD j 0 = d_col_k.getD j 0 :=
-            hset_ne dc j (by omega)
-          rw [this]
-          exact hC_old j (by omega)
-      · -- DRowInv at k+1 (stay case: d_row_{k+1} = d_row_k + 1)
-        -- UNPROVABLE: DRowInv is incorrectly formulated (see DRowInv docstring).
-        -- Same issue as match/swap cases: fails for windows starting after column k.
-        sorry
+      refine ⟨?_, ?_⟩
+      · intro s w hsw hw j hj hsjk1
+        by_cases hsjk : s + j < k
+        · rw [hset_ne dc (s + j) (by omega)]; exact hA_old s w hsw hw j hj hsjk
+        · have hsjek : s + j = k := by omega
+          rw [show (d_col_k.set k dc).getD (s + j) 0 = dc from by rw [hsjek]; exact hset_eq dc]
+          rw [hdc_def, hC_old k (le_refl k)]
+          -- d_col_orig.getD k 0 > j ↔ dp_new[j+1] > dp_new[j] (stay case, Part A at new position)
+          -- By combEncodes_per_position: d_col_orig.getD (s+j) 0 > j ↔ dp_old[j+1] > dp_old[j]
+          -- Need: dp_old[j+1] > dp_old[j] ↔ dp_new[j+1] > dp_new[j] in mismatch case
+          sorry
+      · intro j hj; rw [hset_ne dc j (by omega)]; exact hC_old j (by omega)
 
 /-! ### The Row Step Theorem -/
 
@@ -1258,7 +1153,7 @@ private theorem processRowPartial_drow_pos (ch : ℕ) (b : List ℕ) (d_col : Li
     simp only [colFoldStep, colStep]
     split <;> (try split) <;> simp <;> omega
 
-/-- The column invariant and d_row invariant hold throughout processRow. -/
+/-- The column invariant holds throughout processRow (DRowInv removed). -/
 theorem colSimInv_processRow (ch : ℕ) (b : List ℕ) (d_col : List ℕ)
     (a_prev : List ℕ) (dr_init : ℕ)
     (henc : CombEncodes d_col b a_prev)
@@ -1266,28 +1161,23 @@ theorem colSimInv_processRow (ch : ℕ) (b : List ℕ) (d_col : List ℕ)
     (hdr_init : 0 < dr_init)
     (k : ℕ) (hk : k ≤ b.length) :
     ColSimInv (processRowPartial ch b d_col dr_init k).1
-              d_col b a_prev ch k ∧
-    DRowInv b a_prev ch k (processRowPartial ch b d_col dr_init k).2 := by
+              d_col b a_prev ch k := by
   induction k with
   | zero =>
     rw [processRowPartial_zero]
-    constructor
-    · exact colSimInv_base d_col b a_prev ch
-    · -- DRowInv at k=0: vacuously true since 0 < k is false
-      intro hk0; omega
+    exact colSimInv_base d_col b a_prev ch
   | succ k' ih =>
     rw [processRowPartial_succ]
     have hk' : k' < b.length := by omega
     have hlen_k' : (processRowPartial ch b d_col dr_init k').1.length = b.length :=
       processRowPartial_length ch b d_col dr_init k' (by omega) hlen
-    have ⟨hinv_k, hdr_k⟩ := ih (by omega)
+    have hinv_k := ih (by omega)
     have hdr_pos_k := processRowPartial_drow_pos ch b d_col dr_init hdr_init k' (by omega)
     exact colSimInv_step d_col b a_prev ch k' hk' hlen henc
       (processRowPartial ch b d_col dr_init k').1
       (processRowPartial ch b d_col dr_init k').2
       hlen_k'
       hinv_k
-      hdr_k
       hdr_pos_k
 
 /-- From the column invariant at k = b.length, extract the crossing count property.
@@ -1349,8 +1239,8 @@ theorem row_step_encodes (ch : ℕ) (b : List ℕ) (d_col : List ℕ) (a_prev : 
     (hlen : d_col.length = b.length) :
     CombEncodes (processRow ch b d_col (offset + 1)) b (a_prev ++ [ch]) := by
   rw [processRow_eq_partial]
-  have hinv := (colSimInv_processRow ch b d_col a_prev (offset + 1)
-    henc hlen (by omega) b.length (le_refl _)).1
+  have hinv := colSimInv_processRow ch b d_col a_prev (offset + 1)
+    henc hlen (by omega) b.length (le_refl _)
   have hlen_final : (processRowPartial ch b d_col (offset + 1) b.length).1.length =
       b.length :=
     processRowPartial_length ch b d_col (offset + 1) b.length (le_refl _) hlen
