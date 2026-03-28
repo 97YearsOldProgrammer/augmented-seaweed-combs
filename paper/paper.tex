@@ -46,7 +46,7 @@ The \emph{semi-local longest common subsequence} (LCS) problem asks: given strin
 
 All practical sequence aligners penalize gaps---insertions and deletions that interrupt the alignment.  The natural question is whether the distance column suffices for gap-penalized scoring.  Tiskin's sentinel blow-up~\cite{tiskin2022book,tiskin2019bounded} provides one answer: replace each character~$c$ with $\$^g c$ where~$\$$ is a fresh sentinel, compute the standard semi-local LCS on the expanded strings, and read off gap-penalized scores from the expanded distance column of length~$n\nu$ with $\nu = g{+}1$.  This works, but the $\nu^2$ expansion in string length is costly.  The distance pair $(\dcol, \drow)$ is provably insufficient: pairs of inputs with identical $(\dcol, \drow)$ produce distinct gap-penalized scores, and $\drow$ is not preserved under composition since row distances are overwritten during the comb sweep.  The blow-up has therefore remained the only known route to semi-local gap scoring.
 
-We resolve the affine gap scoring problem by introducing the \emph{augmented seaweed comb}.  Each wire in the Krusche comb carries a \emph{gap depth counter}---a non-negative integer that resets to zero on match and increments by one on mismatch.  The augmented output $(\dcol, \delta_{\mathrm{col}}, \delta_{\mathrm{row}})$ determines the complete Gotoh DP state---all three matrices $H$, $E$, $F$---with zero ambiguity (Theorem~\ref{thm:score-determination}).  The depth counter is a pure observer: it does not affect any label comparison, so the standard permutation is preserved exactly.  The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$ (Theorem~\ref{thm:wreath}), where each wire's depth transformation is an affine function $x \mapsto ax + b$ with $a \in \{0,1\}$, and composition retains $\bigO(n \log n)$ complexity (Theorem~\ref{thm:composition}).  The augmented representation is in exact bijection with the sentinel blow-up (Theorem~\ref{thm:bijection}), achieving $2\times$ storage overhead versus $\nu\times$.  We also prove that the semi-local affine gap score matrix is not Monge (Theorem~\ref{thm:non-monge}), confirming that the wreath product extension---rather than Monge-based composition---is necessary.  Key algebraic properties are formally verified in Lean~4, with 256 theorems and lemmas across 20 files; the proof scripts are available at \texttt{https://github.com/97YearsOldProgrammer/augmented-seaweed-combs}.
+We resolve the affine gap scoring problem by introducing the \emph{augmented seaweed comb}.  Each wire in the Krusche comb carries a \emph{gap depth counter}---a non-negative integer that resets to zero on match and increments by one on mismatch.  The augmented output $(\dcol, \delta_{\mathrm{col}}, \delta_{\mathrm{row}})$ determines the complete Gotoh DP state---all three matrices $H$, $E$, $F$---with zero ambiguity (Theorem~\ref{thm:score-determination}).  The depth counter is a pure observer: it does not affect any label comparison, so the standard permutation is preserved exactly.  The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$ (Theorem~\ref{thm:wreath}), where each wire's depth transformation is an affine function $x \mapsto ax + b$ with $a \in \{0,1\}$, and composition retains $\bigO(n \log n)$ complexity (Theorem~\ref{thm:composition}).  The augmented representation is in exact bijection with the sentinel blow-up (Theorem~\ref{thm:bijection}), achieving $2\times$ storage overhead versus $\nu\times$.  We also prove that the semi-local affine gap score matrix is not Monge (Theorem~\ref{thm:non-monge}), confirming that the wreath product extension---rather than Monge-based composition---is necessary.  Key algebraic properties are formally verified in Lean~4, with 304 theorems and lemmas across 20 files; the proof scripts are available at \texttt{https://github.com/97YearsOldProgrammer/augmented-seaweed-combs}.
 
 The semi-local framework and its extensions have attracted sustained interest.  Tiskin's monograph~\cite{tiskin2022book} consolidates the theory of seaweed braids, distance multiplication, and the sentinel blow-up for bounded-length Smith--Waterman alignment~\cite{tiskin2019bounded}.  State-of-the-art algorithms for weighted sequence alignment uniformly rely on the blow-up or its structural equivalent: Cassis, Kociumaka, and Wellnitz~\cite{cassis2023weighted} achieve optimal bounded weighted edit distance via blow-up and Tiskin composition; Gorbachev and Kociumaka~\cite{gorbachev2025bounded} extend this to integer weights using core-sparse Monge multiplication~\cite{gawrychowski2025coresparse}; Charalampopoulos, Kociumaka, and Mozes~\cite{charalampopoulos2020dynamic} use the full Tiskin framework for dynamic string alignment.  On the structural side, Russo~\cite{russo2012monge} established Monge properties of gap-penalized score matrices, and Carmel, Tsur, and Ziv-Ukelson~\cite{carmel2016almost} studied almost-Monge structure in alignment scoring.  The augmented comb provides an alternative that avoids the $\nu^2$ expansion entirely, while preserving the composability that makes the Tiskin framework algorithmically useful.
 
@@ -1025,7 +1025,7 @@ Parallel composition on GPU architectures could exploit the wreath product struc
 
 \paragraph{Formal verification.}
 The algebraic framework is formalized in Lean~4 with Mathlib, comprising
-256 theorems and lemmas across 20 files.
+304 theorems and lemmas across 20 files.
 The formally verified components include:
 the affine monoid structure (Definition~\ref{def:affine-monoid}),
 the wreath product homomorphism (Theorem~\ref{thm:wreath}),
@@ -1039,36 +1039,36 @@ $\bigO(m\varepsilon)$ extraction),
 and the column-recursive/fold equivalence for the Gotoh~DP
 (proved via fold decomposition with step extraction, head invariants,
 and \texttt{getD\_reverse}).
-Four statements remain unproved in the mechanization, across two files.
-Three are sub-goals of \texttt{colSimInv\_step}, the cell-level inductive
-step underlying the crossing-count--LCS equivalence (Tiskin's
-Theorem~4.10~\cite{tiskin2022book}).  Each corresponds to one branch of the
-comb's column step---match, mismatch-with-swap, and mismatch-with-stay---and
-must establish that the comb's row displacement \texttt{d\_row\_k} at the
-newly processed position satisfies
-$\mathtt{d\_row\_k} > j \iff \mathit{dp\_new}[j{+}1] > \mathit{dp\_new}[j]$,
-connecting comb wire position to DP cell comparison.
-The inductive infrastructure is complete: DP prefix locality
-(\texttt{lcsDpRow\_getD\_prefix}, proved via fold-level agreement) and
-per-position \texttt{CombEncodes} (proved via width subtraction) supply the
-supporting lemmas; only the final row-displacement--to--DP bridge at the
-new position remains open.  All three sub-goals are verified exhaustively
-(1.17~million cases, zero failures).
-The fourth sorry is a bridge lemma for score determination:
-$\mathrm{gotohGlobalScore} \le \mathrm{diagCount}$ when $\varepsilon \le g_o$
-(\texttt{gotoh\_le\_diag\_when\_eps\_small} in \texttt{ScoreDetermination.lean}),
-whose mathematical argument (any gapped path pays $\ge g_o$ and gains
-$\le \varepsilon \le g_o$) is sound but whose formalization requires alignment
-path decomposition over the fold-based Gotoh~DP.
-The score determination theorem is structurally proved: the
-$\varepsilon > g_o$ case is definitional, and the $\varepsilon \le g_o$ case
-reduces to two bridge lemmas---the lower bound (diagonal path feasibility,
-fully proved) and the upper bound (the remaining sorry)---via \texttt{linarith}.
-All four unproved statements are verified exhaustively by testing
-(1.17~million and 174{,}000+ cases respectively with zero failures)
-but their full formal proofs require novel techniques for
-relating fold-based list computations to comb wire positions and alignment
-path properties.
+Fourteen \texttt{sorry} declarations remain across two files,
+reduced from four original independent proof obligations.
+In \texttt{CrossingCountLCS.lean}, two declarations use \texttt{sorry}:
+\texttt{drow\_processRow} and \texttt{colSimInv\_step}.
+The key insight is a new invariant \texttt{DRowProp}:
+$\mathtt{d\_row\_k} > j \iff \mathit{dp\_new}[j] = \mathit{dp\_old}[j]$,
+which consolidates the three original sub-goals (match,
+mismatch-with-swap, mismatch-with-stay) into a single root cause.
+\texttt{DRowProp} is verified exhaustively (1.25~million cases,
+zero failures).  The inductive infrastructure is complete:
+DP prefix locality (\texttt{lcsDpRow\_getD\_prefix}), per-position
+\texttt{CombEncodes}, and the \texttt{DRowProp} invariant statement are
+all proved; only the formal Lean proof connecting \texttt{DRowProp}
+maintenance through \texttt{processRow} and the three cell-level
+bridge lemmas remain open.
+In \texttt{ScoreDetermination.lean}, the original monolithic sorry for
+$\mathrm{gotohGlobalScore} \le \mathrm{diagCount}$ when
+$\varepsilon \le g_o$ has been decomposed into a complete proof
+architecture with a sorry-free proof body.  The key discovery is that
+$\varepsilon$ is non-decreasing along the diagonal: at a match, both
+LCS and diagonal count increase by one; at a mismatch, LCS may increase
+but diagonal count does not.  Therefore
+$\varepsilon(\text{prefix } k) \le \varepsilon(\text{full})$ for all~$k$,
+which combined with the hypothesis $\varepsilon \le g_o$ yields prefix-level
+bounds that close the diagonal induction.  The twelve remaining helper
+\texttt{sorry} declarations are standard DP/list properties (LCS
+monotonicity, match extension, unit increase, mutual Gotoh/LCS bound)
+each requiring 20--80 lines of Lean formalization.
+All unproved statements are verified exhaustively by testing
+(1.25~million and 174{,}000+ cases respectively with zero failures).
 
 \begin{thebibliography}{99}
 
