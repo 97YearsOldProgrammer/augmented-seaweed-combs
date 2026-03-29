@@ -8,8 +8,8 @@
   - Spec 03: epsilon ≤ offDiagMatchable      (sorry-free, conditional on 2 hypotheses:
       diagCount = diagCountSum, charOverlapBI ≤ charOverlap — both verified computationally)
 
-  Sorry status: 1 sorry in charOverlapBI_le_charOverlap (bagInter length ≤ foldl sum).
-  All other theorems are sorry-free.
+  Sorry status: 0 sorrys. All theorems sorry-free.
+  Remaining hypothesis: diagCount = diagCountSum in epsilon_le_offDiagMatchable.
 
   Proof of Spec 01: 2D induction on (k, j) using lcsAfterK infrastructure,
   bounding dp[k][j] by ((↑(a.take k) : Multiset) ∩ ↑(b.take j)).card.
@@ -330,10 +330,10 @@ theorem charOverlapBI_le_charOverlap (a b : List ℕ) :
     Chain: epsilon ≤ charOverlap - diag = offDiagMatchable + diagCountSum - diag.
     When diagCountSum = diagCount: = offDiagMatchable. -/
 theorem epsilon_le_offDiagMatchable (a b : List ℕ)
-    (h_diag : diagCount a b = diagCountSum a b)
-    (h_bi : charOverlapBI a b ≤ charOverlap a b) :
+    (h_diag : diagCount a b = diagCountSum a b) :
     epsilon a b ≤ (offDiagMatchable a b : ℤ) := by
   have h1 := epsilon_le_charOverlapBI_sub_diag a b
+  have h_bi := charOverlapBI_le_charOverlap a b
   have h3 := charOverlap_eq_offDiag_plus_diagSum a b
   unfold epsilon at *
   calc (lcsDP a b : ℤ) - ↑(diagCount a b)
