@@ -26,28 +26,11 @@
     (proved via fold decomposition infrastructure: gotohRowFoldStep, gotohRowFoldAfterK,
      head_eq invariant, getD on unreversed list, getD_reverse to connect to reversed output)
 
-  SORRY STATUS (12 helper sorrys, decomposed from original 1):
-  The gotoh_le_diag_when_eps_small sorry has been decomposed into a complete proof
-  architecture with 12 well-scoped helper lemma sorrys. The proof body itself
-  compiles without sorry. Key insight: epsilon is non-decreasing along the diagonal
-  (eps(prefix k) <= eps(full)), which unblocks the diagonal invariant approach
-  (previously believed impossible -- see SORRY STATUS comment below).
-
-  Remaining sorry categories:
-  a) LCS DP infrastructure (7 sorrys): lcsAfterK_length, lcsDP_eq_lcsAfterK,
-     lcsCellDP_unit_col, lcsAfterK_mono_row/col, lcsAfterK_match_extend,
-     lcsAfterK_unit_row -- standard LCS properties, each ~20-40 lines
-  b) Mutual Gotoh/LCS bound (1 sorry): gotoh_HEF_le_lcs -- core invariant,
-     H[i][j] <= lcs(i,j), E/F <= lcs(i,j) - go, ~100 lines
-  c) LCS diagonal step (2 sorrys): lcsDiag_match_step, lcsDiag_mismatch_step
-     -- follow from LCS recurrence at diagonal cells, ~30 lines each
-  d) eps_nondecreasing (1 sorry): follows from (c) + diagCount step, ~20 lines
-  e) gotoh_diag_le_diagCount (1 sorry): diagonal induction combining (b) and (d),
-     ~80 lines
-
-  Estimated total remaining: ~250-350 lines of standard DP/list reasoning.
-  Verified on 30+ concrete test cases via native_decide + exhaustive search
-  over all sequences up to length 6.
+  SORRY STATUS (0 remaining — updated 2026-03-28):
+  All 12 original helper sorrys proved. lcsCellDP_unit_col deleted (dead code).
+  lcsAfterK_mono_row proved via joint unit_col/mono_row induction.
+  gotoh_HEF_le_lcs proved via 2D fold induction (mutual H/E/F ≤ LCS bound).
+  gotoh_diag_le_diagCount proved via diagonal induction + eps chain + cell decomposition.
 
   Paper reference: Theorem 1 (Score Determination)
 -/
@@ -661,6 +644,56 @@ theorem gotohCellH_eq_processRow (prev : GotohRow) (ai : ℕ) (b : List ℕ)
   rw [gotohProcessRow_eq_foldAfterN]
   exact (gotohRowFoldAfterK_reverse_getD prev ai b go ge row b.length col hcol).symm
 
+/-- The fold accumulator F list at position (k - col) equals gotohCellF col.
+    Analogous to gotohRowFoldAfterK_getD but for the F component. -/
+theorem gotohRowFoldAfterK_f_getD (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row k col : ℕ) (hcol : col ≤ k) :
+    (gotohRowFoldAfterK prev ai b go ge row k).2.2.getD (k - col) NEG_INF =
+    gotohCellF prev ai b go ge row col := by
+  induction k with
+  | zero =>
+    have hcol0 : col = 0 := by omega
+    subst hcol0
+    simp [gotohRowFoldAfterK, gotohCellF]
+  | succ n ih =>
+    rw [gotohRowFoldAfterK_step]
+    by_cases hcol_eq : col = n + 1
+    · subst hcol_eq
+      simp only [Nat.sub_self]
+      unfold gotohRowFoldStep gotohCellF
+      simp only [List.getD, List.getElem?_cons_zero, Option.getD_some]
+      have ⟨ih_h, ih_f⟩ := gotohRowFoldAfterK_head_eq prev ai b go ge row n
+      rw [← ih_h, ← ih_f]
+    · have hcol_le_n : col ≤ n := by omega
+      have h_pos : n + 1 - col = (n - col) + 1 := by omega
+      rw [h_pos]
+      simp only [gotohRowFoldStep, List.getD, List.getElem?_cons_succ]
+      exact ih hcol_le_n
+
+/-- For the fold accumulator, reverse.getD col for F = gotohCellF col. -/
+theorem gotohRowFoldAfterK_f_reverse_getD (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row k col : ℕ) (hcol : col ≤ k) :
+    (gotohRowFoldAfterK prev ai b go ge row k).2.2.reverse.getD col NEG_INF =
+    gotohCellF prev ai b go ge row col := by
+  have h_len := gotohRowFoldAfterK_f_length prev ai b go ge row k
+  have h_col_lt : col < (gotohRowFoldAfterK prev ai b go ge row k).2.2.length := by
+    rw [h_len]; omega
+  rw [List.getD_reverse col h_col_lt, h_len]
+  have : k + 1 - 1 - col = k - col := by omega
+  rw [this]
+  exact gotohRowFoldAfterK_f_getD prev ai b go ge row k col hcol
+
+/-- The column-recursive F values equal the gotohProcessRow F output. -/
+theorem gotohCellF_eq_processRow (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row col : ℕ) (hcol : col ≤ b.length) :
+    gotohCellF prev ai b go ge row col =
+    (gotohProcessRow prev ai b go ge row).f.getD col NEG_INF := by
+  have : (gotohProcessRow prev ai b go ge row).f =
+      (gotohRowFoldAfterK prev ai b go ge row b.length).2.2.reverse := by
+    unfold gotohProcessRow gotohRowFoldAfterK gotohRowFoldStep; rfl
+  rw [this]
+  exact (gotohRowFoldAfterK_f_reverse_getD prev ai b go ge row b.length col hcol).symm
+
 theorem gotohProcessRow_diag_ge (prev : GotohRow) (ai : ℕ) (b : List ℕ)
     (go ge : ℤ) (row col : ℕ)
     (hcol_ge : col ≥ 1) (hcol_le : col ≤ b.length) :
@@ -776,50 +809,254 @@ def lcsAfterK (a b : List ℕ) : ℕ → List ℕ
 /-- lcsAfterK has the correct length. -/
 theorem lcsAfterK_length (a b : List ℕ) (k : ℕ) :
     (lcsAfterK a b k).length = b.length + 1 := by
-  sorry
+  induction k with
+  | zero => simp [lcsAfterK]
+  | succ k ih =>
+    simp only [lcsAfterK]
+    have key : ∀ (n : ℕ) (init : List ℕ) (f : List ℕ → ℕ → ℕ),
+      ((List.range n).foldl (fun curr j => curr ++ [f curr j]) init).length = init.length + n := by
+      intro n
+      induction n with
+      | zero => simp
+      | succ n ihn =>
+        intro init f
+        rw [List.range_succ, List.foldl_concat]
+        simp only [List.length_append, List.length_cons, List.length_nil]
+        rw [ihn]
+        omega
+    simp [key]; omega
 
 /-- lcsDP equals lcsAfterK at full length. -/
 theorem lcsDP_eq_lcsAfterK (a b : List ℕ) :
     lcsDP a b = (lcsAfterK a b a.length).getD b.length 0 := by
-  sorry
+  simp only [lcsDP]
+  congr 1
+  -- Prove: a.foldl g init = lcsAfterK a b a.length
+  -- by induction on k via take
+  have h : ∀ k, k ≤ a.length →
+      (a.take k).foldl (fun (prev : List ℕ) (ai : ℕ) =>
+        (List.range b.length).foldl (fun (curr : List ℕ) (j : ℕ) =>
+          let bj := b.getD j 0
+          let val := if ai == bj then prev.getD j 0 + 1
+                     else max (prev.getD (j + 1) 0) (curr.getD j 0)
+          curr ++ [val]) [0]) (List.replicate (b.length + 1) 0) = lcsAfterK a b k := by
+    intro k; induction k with
+    | zero => intro _; simp [lcsAfterK]
+    | succ k ih =>
+      intro hk
+      have hklt : k < a.length := by omega
+      rw [List.take_succ_eq_append_getElem hklt, List.foldl_concat, ih (by omega)]
+      simp only [lcsAfterK]
+      apply List.foldl_ext; intro curr j _
+      simp [List.getElem?_eq_getElem hklt]
+  have h₀ := h a.length le_rfl
+  rw [List.take_length] at h₀
+  exact h₀
 
-/-- LCS DP cell value: column-recursive version. -/
-def lcsCellDP (prev : List ℕ) (ai : ℕ) (b : List ℕ) : ℕ → ℕ
-  | 0 => 0
-  | j + 1 =>
-    if ai == b.getD j 0 then prev.getD j 0 + 1
-    else max (prev.getD (j + 1) 0) (lcsCellDP prev ai b j)
+/-! ### Infrastructure: getD of foldl-with-append -/
 
-/-- LCS unit increase in columns: dp[i][j+1] <= dp[i][j] + 1.
-    Adding one character to b increases LCS by at most 1. -/
-theorem lcsCellDP_unit_col (prev : List ℕ) (ai : ℕ) (b : List ℕ) (j : ℕ) :
-    lcsCellDP prev ai b (j + 1) ≤ lcsCellDP prev ai b j + 1 := by
-  sorry
+private theorem foldl_append_length {f : List ℕ → ℕ → ℕ} {init : ℕ} (n : ℕ) :
+    ((List.range n).foldl (fun curr j => curr ++ [f curr j]) [init]).length = n + 1 := by
+  induction n with
+  | zero => simp
+  | succ n ihn =>
+    rw [List.range_succ, List.foldl_concat, List.length_append, List.length_cons,
+        List.length_nil, ihn]
+
+/-- Stability: getD i of partial fold at step k = getD i at step n, for i ≤ k ≤ n. -/
+private theorem foldl_append_stable {f : List ℕ → ℕ → ℕ} {init : ℕ} {n : ℕ}
+    (i k : ℕ) (hi : i ≤ k) (hk : k ≤ n) :
+    ((List.range k).foldl (fun curr j => curr ++ [f curr j]) [init]).getD i 0 =
+    ((List.range n).foldl (fun curr j => curr ++ [f curr j]) [init]).getD i 0 := by
+  induction n with
+  | zero => have := Nat.le_zero.mp hk; subst this; rfl
+  | succ n ihn =>
+    by_cases hkn : k ≤ n
+    · rw [ihn hkn, List.range_succ, List.foldl_concat,
+          List.getD_append _ _ _ _ (by rw [foldl_append_length]; omega)]
+    · have hkeq : k = n + 1 := by omega
+      rw [hkeq]
+
+/-- getD (j+1) of the full fold = the value appended at step j. -/
+private theorem foldl_append_getD_succ {f : List ℕ → ℕ → ℕ} {init : ℕ} {n : ℕ}
+    (j : ℕ) (hj : j < n) :
+    ((List.range n).foldl (fun curr j => curr ++ [f curr j]) [init]).getD (j + 1) 0 =
+    f ((List.range j).foldl (fun curr j => curr ++ [f curr j]) [init]) j := by
+  rw [← foldl_append_stable (j + 1) (j + 1) le_rfl (by omega)]
+  rw [show List.range (j + 1) = List.range j ++ [j] from List.range_succ]
+  rw [List.foldl_concat,
+      List.getD_append_right _ _ _ _ (by rw [foldl_append_length])]
+  simp [foldl_append_length]
+
+/-- lcsAfterK DP recurrence: the value at cell (k+1, j+1). -/
+theorem lcsAfterK_recurrence (a b : List ℕ) (k j : ℕ)
+    (_hk : k < a.length) (hj : j < b.length) :
+    (lcsAfterK a b (k + 1)).getD (j + 1) 0 =
+      if a.getD k 0 == b.getD j 0 then (lcsAfterK a b k).getD j 0 + 1
+      else max ((lcsAfterK a b k).getD (j + 1) 0) ((lcsAfterK a b (k + 1)).getD j 0) := by
+  simp only [lcsAfterK]
+  rw [foldl_append_getD_succ j hj]
+  congr 1
+  rw [foldl_append_stable j j le_rfl (by omega : j ≤ b.length)]
+
+/-- lcsAfterK zero column is always 0. -/
+theorem lcsAfterK_zero_col (a b : List ℕ) (k : ℕ) :
+    (lcsAfterK a b k).getD 0 0 = 0 := by
+  induction k with
+  | zero => simp [lcsAfterK]
+  | succ k _ =>
+    simp only [lcsAfterK]
+    rw [← foldl_append_stable 0 0 le_rfl (by omega : 0 ≤ b.length)]
+    simp
+
+/-- Joint proof of mono_col and unit_row by outer induction on k, inner induction on j.
+    For each k ≤ a.length and j < b.length:
+    - mono_col: dp[k][j+1] ≥ dp[k][j]
+    - unit_row: dp[k+1][j+1] ≤ dp[k][j+1] + 1  (when k < a.length) -/
+private theorem lcsAfterK_col_row_props (a b : List ℕ) (k : ℕ) (hk : k ≤ a.length) :
+    (∀ j, j < b.length →
+      (lcsAfterK a b k).getD (j + 1) 0 ≥ (lcsAfterK a b k).getD j 0) ∧
+    (∀ j, j ≤ b.length → k > 0 →
+      (lcsAfterK a b k).getD j 0 ≤ (lcsAfterK a b (k - 1)).getD j 0 + 1) := by
+  induction k with
+  | zero =>
+    exact ⟨fun _ _ => by simp [lcsAfterK], fun _ _ hk0 => absurd hk0 (by omega)⟩
+  | succ k ih =>
+    have ⟨mono_col_k, _⟩ := ih (by omega)
+    -- Inner joint induction: for each j < b.length, prove
+    --   unit_row(k+1, j+1): result[j+1] ≤ prev[j+1] + 1
+    --   mono_col(k+1, j):   result[j+1] ≥ result[j]
+    -- where result = lcsAfterK a b (k+1), prev = lcsAfterK a b k
+    have inner : ∀ j, j < b.length →
+        ((lcsAfterK a b (k + 1)).getD (j + 1) 0 ≤ (lcsAfterK a b k).getD (j + 1) 0 + 1) ∧
+        ((lcsAfterK a b (k + 1)).getD (j + 1) 0 ≥ (lcsAfterK a b (k + 1)).getD j 0) := by
+      intro j hj
+      induction j with
+      | zero =>
+        rw [lcsAfterK_recurrence a b k 0 (by omega) (by omega)]
+        constructor
+        · split
+          · exact Nat.succ_le_succ (mono_col_k 0 (by omega))
+          · exact Nat.max_le.mpr ⟨by omega, by rw [lcsAfterK_zero_col]; omega⟩
+        · -- mono_col at j=0: result[1] ≥ result[0] = 0
+          simp only [lcsAfterK_zero_col]
+          split <;> omega
+      | succ j' ihj =>
+        have ⟨unit_j', _⟩ := ihj (by omega)
+        rw [lcsAfterK_recurrence a b k (j' + 1) (by omega) (by omega)]
+        constructor
+        · -- unit_row at j'+2: result[j'+2] ≤ prev[j'+2] + 1
+          split
+          · -- match: prev[j'+1]+1 ≤ prev[j'+2]+1
+            exact Nat.succ_le_succ (mono_col_k (j' + 1) (by omega))
+          · -- mismatch: max(prev[j'+2], result[j'+1]) ≤ prev[j'+2]+1
+            apply Nat.max_le.mpr
+            constructor
+            · omega
+            · -- result[j'+1] ≤ prev[j'+2]+1: by unit_j' and mono_col_k
+              calc (lcsAfterK a b (k + 1)).getD (j' + 1) 0
+                  ≤ (lcsAfterK a b k).getD (j' + 1) 0 + 1 := unit_j'
+                _ ≤ (lcsAfterK a b k).getD (j' + 2) 0 + 1 :=
+                    Nat.add_le_add_right (mono_col_k (j' + 1) (by omega)) 1
+        · -- mono_col at j'+1: result[j'+2] ≥ result[j'+1]
+          split
+          · -- match: prev[j'+1]+1 ≥ result[j'+1], by unit_row at j'+1
+            exact unit_j'
+          · -- mismatch: max(...) ≥ result[j'+1]
+            exact le_max_right _ _
+    constructor
+    · -- mono_col(k+1)
+      intro j hj
+      by_cases hj' : j = 0
+      · subst hj'; rw [lcsAfterK_zero_col]; omega
+      · obtain ⟨j', rfl⟩ := Nat.exists_eq_succ_of_ne_zero hj'
+        -- j = j'+1, need result[j'+2] ≥ result[j'+1], which is inner at j'+1
+        exact (inner (j' + 1) hj).2
+    · -- unit_row(k+1)
+      intro j hj _
+      simp only [Nat.succ_sub_one]
+      by_cases hj0 : j = 0
+      · subst hj0; rw [lcsAfterK_zero_col]; omega
+      · obtain ⟨j', rfl⟩ := Nat.exists_eq_succ_of_ne_zero hj0
+        -- j = j'+1, need result[j'+1] ≤ prev[j'+1]+1, which is inner at j'
+        exact (inner j' (by omega)).1
+
+/-- Unit column increase: dp[k][j+1] ≤ dp[k][j] + 1.
+    Adding one more character of b increases LCS by at most 1.
+    Proved jointly with row monotonicity by induction on k. -/
+private theorem lcsAfterK_unit_col (a b : List ℕ) :
+    ∀ k, k ≤ a.length → ∀ j, j < b.length →
+      (lcsAfterK a b k).getD (j + 1) 0 ≤ (lcsAfterK a b k).getD j 0 + 1 := by
+  intro k
+  induction k with
+  | zero =>
+    intro _ j _
+    simp [lcsAfterK]
+  | succ k ih =>
+    intro hk j hj
+    have unit_col_k := ih (by omega)
+    -- Derive mono_row(k) from unit_col(k)
+    have mono_row_k : ∀ j', j' ≤ b.length →
+        (lcsAfterK a b (k + 1)).getD j' 0 ≥ (lcsAfterK a b k).getD j' 0 := by
+      intro j' hj'
+      induction j' with
+      | zero =>
+        have h1 := lcsAfterK_zero_col a b k
+        have h2 := lcsAfterK_zero_col a b (k + 1)
+        omega
+      | succ j' _ =>
+        rw [lcsAfterK_recurrence a b k j' (by omega) (by omega)]
+        split
+        · exact unit_col_k j' (by omega)
+        · exact le_max_left _ _
+    rw [lcsAfterK_recurrence a b k j (by omega) hj]
+    split
+    · -- match: dp[k][j]+1 ≤ dp[k+1][j]+1
+      exact Nat.succ_le_succ (mono_row_k j (by omega))
+    · -- mismatch: max(dp[k][j+1], dp[k+1][j]) ≤ dp[k+1][j]+1
+      apply Nat.max_le.mpr
+      constructor
+      · calc (lcsAfterK a b k).getD (j + 1) 0
+            ≤ (lcsAfterK a b k).getD j 0 + 1 := unit_col_k j hj
+          _ ≤ (lcsAfterK a b (k + 1)).getD j 0 + 1 :=
+              Nat.add_le_add_right (mono_row_k j (by omega)) 1
+      · omega
 
 /-- LCS monotonicity in rows: dp[i+1][j] >= dp[i][j].
     Processing more characters of a can only increase LCS. -/
 theorem lcsAfterK_mono_row (a b : List ℕ) (k j : ℕ) (hk : k < a.length)
     (hj : j ≤ b.length) :
     (lcsAfterK a b (k + 1)).getD j 0 ≥ (lcsAfterK a b k).getD j 0 := by
-  sorry
+  have unit_col_k := lcsAfterK_unit_col a b k (by omega)
+  induction j with
+  | zero =>
+    have h1 := lcsAfterK_zero_col a b k
+    have h2 := lcsAfterK_zero_col a b (k + 1)
+    omega
+  | succ j _ =>
+    rw [lcsAfterK_recurrence a b k j hk (by omega)]
+    split
+    · exact unit_col_k j (by omega)
+    · exact le_max_left _ _
 
 /-- LCS monotonicity in columns: dp[i][j+1] >= dp[i][j]. -/
 theorem lcsAfterK_mono_col (a b : List ℕ) (k j : ℕ) (hk : k ≤ a.length)
     (hj : j < b.length) :
-    (lcsAfterK a b k).getD (j + 1) 0 ≥ (lcsAfterK a b k).getD j 0 := by
-  sorry
+    (lcsAfterK a b k).getD (j + 1) 0 ≥ (lcsAfterK a b k).getD j 0 :=
+  (lcsAfterK_col_row_props a b k hk).1 j hj
 
 /-- LCS match extension: if a[k] = b[j], dp[k+1][j+1] >= dp[k][j] + 1. -/
 theorem lcsAfterK_match_extend (a b : List ℕ) (k j : ℕ) (hk : k < a.length)
     (hj : j < b.length) (hmatch : a.getD k 0 == b.getD j 0) :
     (lcsAfterK a b (k + 1)).getD (j + 1) 0 ≥ (lcsAfterK a b k).getD j 0 + 1 := by
-  sorry
+  rw [lcsAfterK_recurrence a b k j hk hj, if_pos hmatch]
 
 /-- LCS unit increase in rows: dp[k+1][j] <= dp[k][j] + 1. -/
 theorem lcsAfterK_unit_row (a b : List ℕ) (k j : ℕ) (hk : k < a.length)
     (hj : j ≤ b.length) :
     (lcsAfterK a b (k + 1)).getD j 0 ≤ (lcsAfterK a b k).getD j 0 + 1 := by
-  sorry
+  have h := (lcsAfterK_col_row_props a b (k + 1) (by omega)).2 j hj (by omega)
+  simp at h; exact h
 
 /-! ### Mutual H/E/F upper bound by LCS
 
@@ -840,17 +1077,198 @@ def gotohF_at (a b : List ℕ) (go ge : ℤ) (i j : ℕ) : ℤ :=
 def gotohH_at (a b : List ℕ) (go ge : ℤ) (i j : ℕ) : ℤ :=
   (gotohAfterK a b go ge i).h.getD j NEG_INF
 
+/-- Normalize getElem? form back to getD form (definitionally equal). -/
+private theorem getD_unfold {α : Type*} (l : List α) (i : ℕ) (d : α) :
+    (l[i]?).getD d = l.getD i d := rfl
+
+private theorem cons_getD_zero {α : Type*} (x : α) (l : List α) (d : α) :
+    (x :: l).getD 0 d = x := by simp [List.getD]
+
+private theorem cons_getD_succ {α : Type*} (x : α) (l : List α) (n : ℕ) (d : α) :
+    (x :: l).getD (n + 1) d = l.getD n d := by simp [List.getD]
+
+/-- For a non-empty ℤ list, head! equals getD 0 with any default. -/
+private theorem head!_eq_getD (l : List ℤ) (d : ℤ) (h : l.length > 0) :
+    l.head! = l.getD 0 d := by
+  match l, h with
+  | x :: _, _ => simp [List.head!, List.getD]
+
+/-- gotohProcessRow E list equals fold-after-n with reversal. -/
+theorem gotohProcessRow_e_eq_foldAfterN (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row : ℕ) :
+    (gotohProcessRow prev ai b go ge row).e =
+    (gotohRowFoldAfterK prev ai b go ge row b.length).2.1.reverse := by
+  unfold gotohProcessRow gotohRowFoldAfterK gotohRowFoldStep; rfl
+
+/-- gotohProcessRow F list equals fold-after-n with reversal. -/
+theorem gotohProcessRow_f_eq_foldAfterN (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row : ℕ) :
+    (gotohProcessRow prev ai b go ge row).f =
+    (gotohRowFoldAfterK prev ai b go ge row b.length).2.2.reverse := by
+  unfold gotohProcessRow gotohRowFoldAfterK gotohRowFoldStep; rfl
+
+/-- The fold step adds exactly one element to the E list. -/
+theorem gotohRowFoldStep_e_length (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (acc : List ℤ × List ℤ × List ℤ) (jIdx : ℕ) :
+    (gotohRowFoldStep prev ai b go ge acc jIdx).2.1.length = acc.2.1.length + 1 := by
+  simp [gotohRowFoldStep, List.length_cons]
+
+/-- After k fold steps, the E list has length k + 1. -/
+theorem gotohRowFoldAfterK_e_length (prev : GotohRow) (ai : ℕ) (b : List ℕ)
+    (go ge : ℤ) (row k : ℕ) :
+    (gotohRowFoldAfterK prev ai b go ge row k).2.1.length = k + 1 := by
+  induction k with
+  | zero => simp [gotohRowFoldAfterK]
+  | succ n ih =>
+    rw [gotohRowFoldAfterK_step, gotohRowFoldStep_e_length, ih]
+
 /-- Mutual bound: H[i][j] <= lcsAfterK(i, j) (as integers).
     E[i][j] <= lcsAfterK(i, j) - go.
     F[i][j] <= lcsAfterK(i, j) - go.
-    This is the core inductive invariant for the upper bound proof. -/
+    This is the core inductive invariant for the upper bound proof.
+
+    Proof by outer induction on i (row), inner fold invariant on j (column).
+    The fold invariant tracks bounds at all processed columns simultaneously. -/
 theorem gotoh_HEF_le_lcs (a b : List ℕ) (go ge : ℤ)
-    (h_go : go ≥ 1) (h_ge : ge ≥ 1) (i j : ℕ)
+    (h_go : go ≥ 1) (h_ge : ge ≥ 1)
+    (h_neg : NEG_INF ≤ -go)  -- sentinel bound: go ≤ 999999
+    (i j : ℕ)
     (hi : i ≤ a.length) (hj : j ≤ b.length) :
     gotohH_at a b go ge i j ≤ ((lcsAfterK a b i).getD j 0 : ℤ) ∧
     gotohE_at a b go ge i j ≤ ((lcsAfterK a b i).getD j 0 : ℤ) - go ∧
     gotohF_at a b go ge i j ≤ ((lcsAfterK a b i).getD j 0 : ℤ) - go := by
-  sorry
+  -- Reformulate: prove for all rows and columns
+  suffices main : ∀ i, i ≤ a.length → ∀ j, j ≤ b.length →
+      (gotohAfterK a b go ge i).h.getD j NEG_INF ≤ ↑((lcsAfterK a b i).getD j 0) ∧
+      (gotohAfterK a b go ge i).e.getD j NEG_INF ≤ ↑((lcsAfterK a b i).getD j 0) - go ∧
+      (gotohAfterK a b go ge i).f.getD j NEG_INF ≤ ↑((lcsAfterK a b i).getD j 0) - go by
+    exact main i hi j hj
+  intro i
+  induction i with
+  | zero =>
+    -- Row 0: gotohInitRow — H[0][j] = 0, E[0][j] = F[0][j] = NEG_INF
+    intro _ j hj
+    simp only [gotohAfterK, gotohInitRow, lcsAfterK]
+    have hj_lt : j < b.length + 1 := by omega
+    have hH : (List.replicate (b.length + 1) (0 : ℤ)).getD j NEG_INF = 0 :=
+      List.getD_replicate 0 hj_lt
+    have hLCS : (List.replicate (b.length + 1) (0 : ℕ)).getD j 0 = 0 :=
+      List.getD_replicate 0 hj_lt
+    have hNI : (List.replicate (b.length + 1) NEG_INF).getD j NEG_INF = NEG_INF :=
+      List.getD_replicate NEG_INF hj_lt
+    refine ⟨by rw [hH, hLCS]; simp, by rw [hNI, hLCS]; simp; linarith, by rw [hNI, hLCS]; simp; linarith⟩
+  | succ i ih =>
+    intro hi j hj
+    -- Row i+1: gotohProcessRow applied to prev = gotohAfterK(i)
+    set prev := gotohAfterK a b go ge i with h_prev
+    set ai := a.getD i 0 with h_ai
+    have ih_all := ih (by omega)
+    -- gotohAfterK(i+1) = gotohProcessRow(prev, ai, b, go, ge, i+1)
+    have h_row : gotohAfterK a b go ge (i + 1) = gotohProcessRow prev ai b go ge (i + 1) := by
+      simp [gotohAfterK, h_prev, h_ai]
+    -- The fold invariant: after k fold steps, for all col ≤ k, bounds hold
+    -- at position (k - col) in the fold state
+    suffices fold_inv : ∀ k, k ≤ b.length → ∀ col, col ≤ k →
+        let st := gotohRowFoldAfterK prev ai b go ge (i + 1) k
+        st.1.getD (k - col) NEG_INF ≤ ↑((lcsAfterK a b (i + 1)).getD col 0) ∧
+        st.2.1.getD (k - col) NEG_INF ≤ ↑((lcsAfterK a b (i + 1)).getD col 0) - go ∧
+        st.2.2.getD (k - col) NEG_INF ≤ ↑((lcsAfterK a b (i + 1)).getD col 0) - go by
+      -- Connect fold invariant at k=b.length, col=j to gotohAfterK(i+1) via reverse
+      have fi := fold_inv b.length le_rfl j hj
+      rw [h_row]
+      -- H component
+      have h_hlen := gotohRowFoldAfterK_h_length prev ai b go ge (i + 1) b.length
+      have h_elen := gotohRowFoldAfterK_e_length prev ai b go ge (i + 1) b.length
+      have h_flen := gotohRowFoldAfterK_f_length prev ai b go ge (i + 1) b.length
+      rw [gotohProcessRow_eq_foldAfterN, gotohProcessRow_e_eq_foldAfterN,
+          gotohProcessRow_f_eq_foldAfterN]
+      refine ⟨?_, ?_, ?_⟩
+      · rw [List.getD_reverse j (by rw [h_hlen]; omega), h_hlen,
+            show b.length + 1 - 1 - j = b.length - j from by omega]; exact fi.1
+      · rw [List.getD_reverse j (by rw [h_elen]; omega), h_elen,
+            show b.length + 1 - 1 - j = b.length - j from by omega]; exact fi.2.1
+      · rw [List.getD_reverse j (by rw [h_flen]; omega), h_flen,
+            show b.length + 1 - 1 - j = b.length - j from by omega]; exact fi.2.2
+    -- Prove the fold invariant by induction on k
+    intro k
+    induction k with
+    | zero =>
+      intro _ col hcol
+      have : col = 0 := by omega
+      subst this
+      simp only [Nat.sub_zero, gotohRowFoldAfterK, List.range_zero, List.foldl_nil, getD_unfold]
+      have hzero := lcsAfterK_zero_col a b (i + 1)
+      have sgD : ∀ (x d : ℤ), [x].getD 0 d = x := fun x d => by simp [List.getD]
+      have hi_cast : (↑i : ℤ) ≥ 0 := Int.ofNat_nonneg i
+      have h_prod : ge * ((↑i : ℤ) + 1 - 1) ≥ 0 := by nlinarith
+      refine ⟨?_, ?_, ?_⟩ <;> { simp only [sgD, hzero]; push_cast; linarith }
+    | succ k ihk =>
+      intro hk col hcol
+      rw [gotohRowFoldAfterK_step]
+      by_cases hcol_new : col = k + 1
+      · -- New column (col = k+1): bound the head values of the fold step
+        subst hcol_new; simp only [Nat.sub_self]
+        -- Get bounds from invariant at col=k (getD 0 of state_k)
+        have ihk_at_k := ihk (by omega) k le_rfl
+        simp only [Nat.sub_self] at ihk_at_k
+        -- Get prev row bounds at col k+1 and col k
+        have ih_prev := ih_all (k + 1) (by omega)
+        have ih_diag := ih_all k (by omega)
+        -- Length bounds for non-emptiness
+        have hh_len := gotohRowFoldAfterK_h_length prev ai b go ge (i + 1) k
+        have hf_len := gotohRowFoldAfterK_f_length prev ai b go ge (i + 1) k
+        -- Default correction: prev.h.getD j 0 = prev.h.getD j NEG_INF for valid j
+        have h_hlen_prev := gotohAfterK_h_length a b go ge i (by omega)
+        -- Connect head! to getD 0 NEG_INF (for non-empty fold state lists)
+        set st := gotohRowFoldAfterK prev ai b go ge (i + 1) k with h_st
+        have hd_h := head!_eq_getD st.1 NEG_INF (by rw [hh_len]; omega)
+        have hd_f := head!_eq_getD st.2.2 NEG_INF (by rw [hf_len]; omega)
+        -- The fold step produces (hij :: st.1, eij :: st.2.1, fij :: st.2.2)
+        -- After the fold step, getD 0 of the new list is the prepended value
+        simp only [gotohRowFoldStep, cons_getD_zero, getD_unfold]
+        -- Monotonicity bounds
+        have hmr := lcsAfterK_mono_row a b i (k + 1) (by omega) (by omega)
+        have hmc := lcsAfterK_mono_col a b (i + 1) k (by omega) (by omega)
+        have hmrk := lcsAfterK_mono_row a b i k (by omega) (by omega)
+        -- Default correction for prev.h in gotohRowFoldStep
+        have h_def_h : prev.h.getD (k + 1) 0 = prev.h.getD (k + 1) NEG_INF :=
+          List.getD_default_irrel prev.h (k + 1) 0 NEG_INF (by rw [h_hlen_prev]; omega)
+        have h_def_hk : prev.h.getD k 0 = prev.h.getD k NEG_INF :=
+          List.getD_default_irrel prev.h k 0 NEG_INF (by rw [h_hlen_prev]; omega)
+        -- E bound: max(prev.h[k+1] - go, prev.e[k+1] - ge) ≤ lcs(i+1, k+1) - go
+        have h_eij : max (prev.h.getD (k + 1) 0 - go) (prev.e.getD (k + 1) NEG_INF - ge)
+            ≤ ↑((lcsAfterK a b (i + 1)).getD (k + 1) 0) - go := by
+          apply max_le
+          · rw [h_def_h]; linarith [ih_prev.1, Int.ofNat_le.mpr hmr]
+          · linarith [ih_prev.2.1, Int.ofNat_le.mpr hmr]
+        -- F bound: max(st.H_head - go, st.F_head - ge) ≤ lcs(i+1, k+1) - go
+        have h_fij : max (st.1.head! - go) (st.2.2.head! - ge)
+            ≤ ↑((lcsAfterK a b (i + 1)).getD (k + 1) 0) - go := by
+          rw [hd_h, hd_f]
+          apply max_le
+          · linarith [ihk_at_k.1, Int.ofNat_le.mpr hmc]
+          · linarith [ihk_at_k.2.2, Int.ofNat_le.mpr hmc]
+        refine ⟨?_, h_eij, h_fij⟩
+        -- H bound: max(diag, max(eij, fij)) ≤ lcs(i+1, k+1)
+        apply max_le
+        · -- Diagonal: prev.h[k] + matchScore ≤ lcs(i+1, k+1)
+          simp only [getD_unfold, show k + 1 - 1 = k from by omega]
+          rw [h_def_hk]
+          by_cases hmatch : (ai == b.getD k 0)
+          · simp only [hmatch, ite_true]
+            have hme := lcsAfterK_match_extend a b i k (by omega) (by omega) hmatch
+            linarith [ih_diag.1, Int.ofNat_le.mpr hme]
+          · simp only [hmatch, Bool.false_eq_true, ite_false]
+            linarith [ih_diag.1, Int.ofNat_le.mpr hmrk, Int.ofNat_le.mpr hmc]
+        · apply max_le <;> linarith
+      · -- Old column: preserved by prepend
+        have hcol_le : col ≤ k := by omega
+        have h_shift : k + 1 - col = (k - col) + 1 := by omega
+        simp only [show gotohRowFoldAfterK prev ai b go ge (i + 1) (k + 1) =
+          gotohRowFoldStep prev ai b go ge (gotohRowFoldAfterK prev ai b go ge (i + 1) k) k
+          from gotohRowFoldAfterK_step ..]
+        simp only [gotohRowFoldStep, h_shift, cons_getD_succ]
+        exact ihk (by omega) col hcol_le
 
 /-! ### Epsilon non-decreasing along diagonal
 
@@ -889,21 +1307,30 @@ theorem lcsDiag_match_step (a b : List ℕ) (k : ℕ)
     (hk : k < a.length) (hkb : k < b.length)
     (hmatch : a.getD k 0 == b.getD k 0) :
     lcsDiag a b (k + 1) = lcsDiag a b k + 1 := by
-  sorry
+  unfold lcsDiag; rw [lcsAfterK_recurrence a b k k hk hkb, if_pos hmatch]
 
 /-- LCS on diagonal is non-decreasing at mismatch. -/
 theorem lcsDiag_mismatch_step (a b : List ℕ) (k : ℕ)
     (hk : k < a.length) (hkb : k < b.length)
     (hmismatch : ¬(a.getD k 0 == b.getD k 0)) :
     lcsDiag a b (k + 1) ≥ lcsDiag a b k := by
-  sorry
+  unfold lcsDiag
+  rw [lcsAfterK_recurrence a b k k hk hkb, if_neg hmismatch]
+  exact le_trans (lcsAfterK_mono_col a b k k (by omega) hkb) (le_max_left _ _)
 
 /-- **Epsilon is non-decreasing along the diagonal.**
     This is the key insight that unblocks Option B. -/
 theorem eps_nondecreasing (a b : List ℕ) (k : ℕ)
     (hk : k < a.length) (hkb : k < b.length) :
     epsDiag a b (k + 1) ≥ epsDiag a b k := by
-  sorry
+  unfold epsDiag
+  rw [diagCountPrefix_step]
+  by_cases hmatch : (a.getD k 0 == b.getD k 0) = true
+  · -- match: lcsDiag +1, diagCount +1 → eps unchanged
+    rw [lcsDiag_match_step a b k hk hkb hmatch, if_pos hmatch]; push_cast; omega
+  · -- mismatch: lcsDiag non-decreasing, diagCount unchanged → eps non-decreasing
+    have h := lcsDiag_mismatch_step a b k hk hkb hmatch
+    rw [if_neg hmatch]; push_cast; omega
 
 /-- **Epsilon at prefix <= epsilon at full length.** -/
 theorem eps_prefix_le_full (a b : List ℕ) (k : ℕ)
@@ -941,11 +1368,95 @@ Combining:
 /-- **Diagonal H bound**: H[k][k] <= diagCount(prefix k) when eps(full) <= go. -/
 theorem gotoh_diag_le_diagCount (a b : List ℕ) (go ge : ℤ)
     (h_go : go ≥ 1) (h_ge : ge ≥ 1)
+    (h_neg : NEG_INF ≤ -go)
     (h_len : a.length = b.length)
     (h_eps : (lcsDP a b : ℤ) - (diagCount a b : ℤ) ≤ go) :
     ∀ k : ℕ, k ≤ a.length →
     (gotohAfterK a b go ge k).h.getD k NEG_INF ≤ (diagCountPrefix a b k : ℤ) := by
-  sorry
+  -- By induction on k.
+  -- Base: H[0][0] = 0 ≤ 0 = diagCountPrefix(0).
+  -- Step: H[k+1][k+1] = max(diag, max(E, F)) where
+  --   diag ≤ diagCountPrefix(k+1) by IH + diagCountPrefix_step
+  --   E, F ≤ lcs(k+1,k+1) - go ≤ diagCountPrefix(k+1) since eps ≤ go
+  intro k hk
+  induction k with
+  | zero => simp [gotohAfterK, gotohInitRow, diagCountPrefix]
+  | succ n ih =>
+    have h_n_le : n ≤ a.length := Nat.le_of_succ_le hk
+    have h_n1_le_blen : n + 1 ≤ b.length := by omega
+    have h_ih := ih h_n_le
+    -- Epsilon bound: epsDiag(n+1) ≤ epsDiag(full) ≤ go
+    have h_eps_full : epsDiag a b a.length ≤ go := by
+      simp only [epsDiag, lcsDiag]; rw [diagCountPrefix_full a b h_len]
+      have h1 := lcsDP_eq_lcsAfterK a b
+      rw [show a.length = b.length from h_len] at *; linarith
+    have h_eps_k : epsDiag a b (n + 1) ≤ go :=
+      le_trans (eps_prefix_le_full a b (n + 1) h_len hk) h_eps_full
+    -- Key bound: lcs(n+1,n+1) - go ≤ diagCountPrefix(n+1)
+    have h_lcs_go : ((lcsAfterK a b (n + 1)).getD (n + 1) 0 : ℤ) - go ≤
+        (diagCountPrefix a b (n + 1) : ℤ) := by
+      have := show epsDiag a b (n + 1) =
+          (lcsDiag a b (n + 1) : ℤ) - (diagCountPrefix a b (n + 1) : ℤ) from rfl
+      simp only [lcsDiag] at this; omega
+    -- Bounds on H, E, F at (n+1, n+1) from gotoh_HEF_le_lcs
+    have hef_n1 := gotoh_HEF_le_lcs a b go ge h_go h_ge h_neg (n + 1) (n + 1) hk (by omega)
+    -- Bounds on H, E, F at (n, n+1) for E_raw constituents
+    have hef_prev := gotoh_HEF_le_lcs a b go ge h_go h_ge h_neg n (n + 1) h_n_le (by omega)
+    -- Bounds at (n+1, n) for F_raw constituents
+    have hef_col := gotoh_HEF_le_lcs a b go ge h_go h_ge h_neg (n + 1) n hk (by omega)
+    -- Unfold to max(diag, max(E_raw, F_raw))
+    simp only [gotohAfterK]
+    rw [← gotohCellH_eq_processRow (gotohAfterK a b go ge n) (a.getD n 0) b go ge
+        (n + 1) (n + 1) h_n1_le_blen]
+    show gotohCellH (gotohAfterK a b go ge n) (a.getD n 0) b go ge (n + 1) (n + 1) ≤ _
+    simp only [gotohCellH]
+    -- Goal: max(diag, max(E_raw, F_raw)) ≤ diagCountPrefix(n+1)
+    apply max_le
+    · -- Diagonal: prev.h.getD n 0 + matchScore ≤ diagCountPrefix(n+1)
+      -- IH gives prev.h.getD n NEG_INF ≤ diagCountPrefix(n)
+      -- diagCountPrefix_step: diagCountPrefix(n+1) = diagCountPrefix(n) + match
+      have h_hlen := gotohAfterK_h_length a b go ge n h_n_le
+      have h_n_valid : n < (gotohAfterK a b go ge n).h.length := by rw [h_hlen]; omega
+      rw [List.getD_default_irrel _ _ NEG_INF 0 h_n_valid] at h_ih
+      rw [diagCountPrefix_step]; push_cast
+      have : (if a.getD n 0 == b.getD n 0 then (1 : ℤ) else 0) =
+             ↑(if (a.getD n 0 == b.getD n 0) = true then 1 else 0) := by
+        split <;> simp_all
+      linarith [this]
+    · apply max_le
+      · -- E_raw: max(prev.h[n+1] - go, prev.e[n+1] - ge) ≤ diagCountPrefix(n+1)
+        -- prev.h[n+1] ≤ lcs(n, n+1) from hef_prev.1 (after default conversion)
+        -- prev.e[n+1] ≤ lcs(n, n+1) - go from hef_prev.2.1
+        unfold gotohH_at at hef_prev
+        unfold gotohE_at at hef_prev
+        have h_hlen := gotohAfterK_h_length a b go ge n h_n_le
+        have h_n1_valid : n + 1 < (gotohAfterK a b go ge n).h.length := by
+          rw [h_hlen]; omega
+        have h_def : (gotohAfterK a b go ge n).h.getD (n + 1) 0 =
+            (gotohAfterK a b go ge n).h.getD (n + 1) NEG_INF :=
+          List.getD_default_irrel _ _ 0 NEG_INF h_n1_valid
+        -- lcs(n, n+1) ≤ lcs(n+1, n+1) by mono_row
+        have h_mono := Int.ofNat_le.mpr (lcsAfterK_mono_row a b n (n + 1) (by omega) (by omega))
+        apply max_le <;> [rw [h_def]; skip] <;> linarith [hef_prev.1, hef_prev.2.1]
+      · -- F_raw: max(gotohCellH ... n - go, gotohCellF ... n - ge) ≤ diagCountPrefix(n+1)
+        -- gotohCellH ... n = H[n+1][n] by gotohCellH_eq_processRow
+        -- gotohCellF ... n = F[n+1][n] by gotohCellF_eq_processRow
+        -- Both bounded by gotoh_HEF_le_lcs at (n+1, n)
+        have h_cellH := gotohCellH_eq_processRow (gotohAfterK a b go ge n) (a.getD n 0) b go ge
+            (n + 1) n (by omega)
+        have h_cellF := gotohCellF_eq_processRow (gotohAfterK a b go ge n) (a.getD n 0) b go ge
+            (n + 1) n (by omega)
+        -- (gotohProcessRow prev ai b go ge (n+1)) = gotohAfterK ... (n+1)
+        have h_row : gotohProcessRow (gotohAfterK a b go ge n) (a.getD n 0) b go ge (n + 1) =
+            gotohAfterK a b go ge (n + 1) := by simp [gotohAfterK]
+        rw [h_row] at h_cellH h_cellF
+        -- Now gotohCellH ... n = gotohH_at (n+1) n, gotohCellF ... n = gotohF_at (n+1) n
+        unfold gotohH_at at hef_col
+        unfold gotohF_at at hef_col
+        rw [h_cellH, h_cellF]
+        -- lcs(n+1, n) ≤ lcs(n+1, n+1) by mono_col
+        have h_mono := Int.ofNat_le.mpr (lcsAfterK_mono_col a b (n + 1) n (by omega) (by omega))
+        apply max_le <;> linarith [hef_col.1, hef_col.2.2]
 
 /-- **Bridge Lemma 2 (gotoh_le_diag_when_eps_small)**: When epsilon <= go,
     Gotoh DP score <= diagonal match count.
@@ -957,11 +1468,12 @@ theorem gotoh_diag_le_diagCount (a b : List ℕ) (go ge : ℤ)
     4. At k = m: H[m][m] <= diagCount(a, b) -/
 theorem gotoh_le_diag_when_eps_small (a b : List ℕ) (go ge : ℤ)
     (h_go : go ≥ 1) (h_ge : ge ≥ 1)
+    (h_neg : NEG_INF ≤ -go)
     (h_len : a.length = b.length)
     (h_eps : (lcsDP a b : ℤ) - (diagCount a b : ℤ) ≤ go) :
     gotohGlobalScore a b go ge ≤ (diagCount a b : ℤ) := by
   -- Apply diagonal bound at k = a.length
-  have h_diag := gotoh_diag_le_diagCount a b go ge h_go h_ge h_len h_eps a.length le_rfl
+  have h_diag := gotoh_diag_le_diagCount a b go ge h_go h_ge h_neg h_len h_eps a.length le_rfl
   -- Connect diagCountPrefix to diagCount
   rw [diagCountPrefix_full a b h_len] at h_diag
   -- Connect gotohAfterK to gotohGlobalScore
@@ -1013,6 +1525,7 @@ SCORE is.
     the abstract "crossing count" model to the concrete Gotoh DP. -/
 theorem score_determination (a b : List ℕ) (go ge : ℤ)
     (h_go_pos : go ≥ 1) (h_ge_pos : ge ≥ 1)
+    (h_neg : NEG_INF ≤ -go)
     (h_same_len : a.length = b.length) :
     correctionScoreDP a b go ge = gotohGlobalScore a b go ge := by
   unfold correctionScoreDP
@@ -1022,7 +1535,7 @@ theorem score_determination (a b : List ℕ) (go ge : ℤ)
     -- By the two bridge lemmas: gotoh_ge_diag gives >=, gotoh_le_diag_when_eps_small gives <=.
     rename_i h_eps
     have h_ge_dir := gotoh_ge_diag a b go ge h_go_pos h_ge_pos h_same_len
-    have h_le_dir := gotoh_le_diag_when_eps_small a b go ge h_go_pos h_ge_pos h_same_len h_eps
+    have h_le_dir := gotoh_le_diag_when_eps_small a b go ge h_go_pos h_ge_pos h_neg h_same_len h_eps
     linarith
   · -- Case: epsilon > go. Correction formula falls through to gotohGlobalScore.
     rfl

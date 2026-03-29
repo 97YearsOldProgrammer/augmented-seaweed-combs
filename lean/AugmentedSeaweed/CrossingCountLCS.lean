@@ -1087,17 +1087,341 @@ def DRowProp (b : List ℕ) (a_prev : List ℕ) (ch : ℕ)
     (d_row_k > j ↔ dp_new.getD j 0 = dp_old.getD j 0)
 
 /-- DRowProp is maintained through processRow. The invariant is carried alongside ColSimInv.
-    The proof requires showing d_row_k at each step relates to the DP prefix equality condition.
-    Verified: 1,252,080 cases with 0 failures. Formal proof deferred to Phase 02.3 Plan 02. -/
+    Induction on k with three colStep sub-cases (match, swap, stay).
+    Base (k=0): d_row = dr_init > 0, j=0, dpn[0]=dpo[0]=0.
+    Step (k→k+1): Uses CombEncodes per-position, DP cell recurrence, and DP monotonicity bounds.
+    Match/Swap: dpn[j] = dpo[j-1]+1 (match) or max(dpo[j], dpn[j-1]) (swap).
+    Stay: case split on dpn[j-1] = dpo[j-1] vs not, using IH contrapositive + CombEncodes. -/
 theorem drow_processRow (ch : ℕ) (b : List ℕ) (d_col : List ℕ)
     (a_prev : List ℕ) (dr_init : ℕ)
     (henc : CombEncodes d_col b a_prev)
     (hlen : d_col.length = b.length)
     (hdr_init : 0 < dr_init)
     (k : ℕ) (hk : k ≤ b.length) :
-    DRowProp b a_prev ch k (processRowPartial ch b d_col dr_init k).2 :=
-  sorry
-
+    DRowProp b a_prev ch k (processRowPartial ch b d_col dr_init k).2 := by
+  induction k with
+  | zero =>
+    rw [processRowPartial_zero]
+    unfold DRowProp
+    intro s w hs hk hsw hw
+    have hs0 : s = 0 := by omega
+    subst hs0
+    simp only [Nat.zero_sub]
+    constructor
+    · intro _; rw [lcsDpStep_zero, lcsDpRow_zero]
+    · intro _; exact hdr_init
+  | succ k' ih =>
+    have ih' := ih (by omega)
+    rw [processRowPartial_succ]
+    simp only [colFoldStep, colStep]
+    unfold DRowProp
+    intro s w hs hk hsw hw
+    set prp := processRowPartial ch b d_col dr_init k' with hprp_def
+    set dc := prp.1.getD k' 0 with hdc_def
+    set dr := prp.2 with hdr_def
+    have hdc_eq : dc = d_col.getD k' 0 := by
+      rw [hdc_def, processRowPartial_getD_ge ch b d_col dr_init k' k' (le_refl _) (by omega) hlen]
+    simp only
+    split_ifs with hmatch hswap
+    · -- Match case: new d_row = dc + 1
+      -- Goal: dc + 1 > k'+1-s ↔ dpn[k'+1-s] = dpo[k'+1-s]
+      -- Chain: dc+1 > p+1 ↔ dc > p ↔ dpo[p+1] > dpo[p] ↔ dpo[p]+1 = dpo[p+1]
+      --   ↔ dpo[p]+1 = dpn[p+1] (match: dpn[p+1] = dpo[p]+1)
+      simp only
+      by_cases hsj : s = k' + 1
+      · subst hsj; simp only [Nat.sub_self]
+        constructor
+        · intro _; rw [lcsDpStep_zero, lcsDpRow_zero]
+        · intro _; omega
+      · set j := k' + 1 - s with hj_def
+        set p := k' - s with hp_def
+        have hpj : j = p + 1 := by omega
+        have hsk'p : s + p = k' := by omega
+        rw [hpj]
+        set b_win := (b.drop s).take w with hbw_def
+        have hbw_len : b_win.length = w := by
+          rw [hbw_def, List.length_take, List.length_drop]; omega
+        have hce2 : dc > p ↔ (lcsDpRow a_prev b_win).getD (p + 1) 0 >
+            (lcsDpRow a_prev b_win).getD p 0 := by
+          have hpfx1 : (lcsDpRow a_prev b_win).getD (p + 1) 0 =
+              lcsDp a_prev (List.take (p + 1) (List.drop s b)) := by
+            rw [hbw_def, lcsDpRow_getD_prefix a_prev _ (p + 1) (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have hpfx0 : (lcsDpRow a_prev b_win).getD p 0 =
+              lcsDp a_prev (List.take p (List.drop s b)) := by
+            rw [hbw_def, lcsDpRow_getD_prefix a_prev _ p (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have h := combEncodes_per_position d_col b a_prev henc s p (by omega) (by omega)
+          rw [hsk'p] at h; rw [hdc_eq, hpfx1, hpfx0]; exact h
+        have hdpo_nd := lcsDpRow_nondecreasing a_prev b_win p (by rw [hbw_len]; omega)
+        have hdpo_unit := lcsDpRow_unit_increase a_prev b_win p (by rw [hbw_len]; omega)
+        have hbwp : b_win.getD p 0 = b.getD k' 0 := by
+          simp only [hbw_def, List.getD]
+          rw [List.getElem?_eq_getElem (by rw [List.length_take, List.length_drop]; omega)]
+          simp only [Option.getD_some, List.getElem_take, List.getElem_drop]
+          rw [List.getElem?_eq_getElem (by omega : k' < b.length)]
+          simp [hsk'p]
+        have hmatch_bw : (ch == b_win.getD p 0) = true := by rw [hbwp]; exact hmatch
+        have hcell : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD (p + 1) 0 =
+            (lcsDpRow a_prev b_win).getD p 0 + 1 := by
+          rw [lcsDpStep_eq_partial, hbw_len]
+          by_cases hpw : p + 1 < w
+          · rw [lcsDpStepPartial_getD_stable _ _ _ (p+1) w hpw, lcsDpStepPartial_prev_at,
+                lcsDpStepPartial_last, if_pos hmatch_bw]
+          · have hpeq : p + 1 = w := by omega
+            rw [show w = p + 1 from hpeq.symm, lcsDpStepPartial_last, if_pos hmatch_bw]
+        constructor
+        · intro hgt
+          have hdc_gt : dc > p := by omega
+          have hdpo_inc := hce2.mp hdc_gt
+          rw [hcell]; omega
+        · intro heq
+          rw [hcell] at heq
+          have hdpo_inc : (lcsDpRow a_prev b_win).getD (p + 1) 0 >
+              (lcsDpRow a_prev b_win).getD p 0 := by omega
+          have hdc_gt := hce2.mpr hdpo_inc
+          omega
+    · -- Swap case: new d_row = dc + 1 (identical to match)
+      simp only
+      by_cases hsj : s = k' + 1
+      · subst hsj; simp only [Nat.sub_self]
+        constructor
+        · intro _; rw [lcsDpStep_zero, lcsDpRow_zero]
+        · intro _; omega
+      · set j := k' + 1 - s with hj_def
+        set p := k' - s with hp_def
+        have hpj : j = p + 1 := by omega
+        have hsk'p : s + p = k' := by omega
+        rw [hpj]
+        set b_win := (b.drop s).take w with hbw_def
+        have hbw_len : b_win.length = w := by
+          rw [hbw_def, List.length_take, List.length_drop]; omega
+        have hce2 : dc > p ↔ (lcsDpRow a_prev b_win).getD (p + 1) 0 >
+            (lcsDpRow a_prev b_win).getD p 0 := by
+          have hpfx1 : (lcsDpRow a_prev b_win).getD (p + 1) 0 =
+              lcsDp a_prev (List.take (p + 1) (List.drop s b)) := by
+            rw [hbw_def, lcsDpRow_getD_prefix a_prev _ (p + 1) (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have hpfx0 : (lcsDpRow a_prev b_win).getD p 0 =
+              lcsDp a_prev (List.take p (List.drop s b)) := by
+            rw [hbw_def, lcsDpRow_getD_prefix a_prev _ p (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have h := combEncodes_per_position d_col b a_prev henc s p (by omega) (by omega)
+          rw [hsk'p] at h; rw [hdc_eq, hpfx1, hpfx0]; exact h
+        have hdpo_nd := lcsDpRow_nondecreasing a_prev b_win p (by rw [hbw_len]; omega)
+        have hdpo_unit := lcsDpRow_unit_increase a_prev b_win p (by rw [hbw_len]; omega)
+        -- Swap: mismatch, so DP cell = max(dpo[p+1], dpn[p])
+        -- But the d_row is still dc + 1, same iff as match
+        -- We show: dc > p ↔ dpo[p+1] > dpo[p] ↔ dpn[p+1] = dpo[p+1]
+        -- using DRowProp IH (dr > p ↔ dpn[p] = dpo[p]) and bounds
+        have hbwp : b_win.getD p 0 = b.getD k' 0 := by
+          simp only [hbw_def, List.getD]
+          rw [List.getElem?_eq_getElem (by rw [List.length_take, List.length_drop]; omega)]
+          simp only [Option.getD_some, List.getElem_take, List.getElem_drop]
+          rw [List.getElem?_eq_getElem (by omega : k' < b.length)]
+          simp [hsk'p]
+        have hmismatch_bw : ¬(ch == b_win.getD p 0) = true := by rw [hbwp]; exact hmatch
+        -- dpn[p] bounds
+        have hdom : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 ≥
+            (lcsDpRow a_prev b_win).getD p 0 := by
+          by_cases hp0 : p = 0
+          · rw [hp0, lcsDpRow_zero a_prev b_win, lcsDpStep_zero]
+          · rw [show p = (p - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+            rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+            exact (lcsDpStepPartial_properties ch _ _
+              (fun i hi => lcsDpRow_nondecreasing a_prev _ i hi)
+              (fun i hi => lcsDpRow_unit_increase a_prev _ i hi)
+              (lcsDpRow_zero a_prev _) (p-1) (by omega)).2.2.1
+        have hub : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 ≤
+            (lcsDpRow a_prev b_win).getD p 0 + 1 := by
+          by_cases hp0 : p = 0
+          · rw [hp0, lcsDpRow_zero a_prev b_win, lcsDpStep_zero]; omega
+          · rw [show p = (p - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+            rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+            exact (lcsDpStepPartial_properties ch _ _
+              (fun i hi => lcsDpRow_nondecreasing a_prev _ i hi)
+              (fun i hi => lcsDpRow_unit_increase a_prev _ i hi)
+              (lcsDpRow_zero a_prev _) (p-1) (by omega)).2.2.2
+        -- Mismatch cell: dpn[p+1] = max(dpo[p+1], dpn[p])
+        have hstab_p : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 =
+            (lcsDpStepPartial ch b_win (lcsDpRow a_prev b_win) p).getD p 0 := by
+          rw [lcsDpStep_eq_partial, hbw_len]
+          rw [lcsDpStepPartial_getD_stable _ _ _ p w (by omega), lcsDpStepPartial_prev_at]
+        have hcell : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD (p + 1) 0 =
+            Nat.max ((lcsDpRow a_prev b_win).getD (p + 1) 0)
+              ((lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0) := by
+          rw [hstab_p, lcsDpStep_eq_partial, hbw_len]
+          by_cases hpw : p + 1 < w
+          · rw [lcsDpStepPartial_getD_stable _ _ _ (p+1) w hpw, lcsDpStepPartial_prev_at,
+                lcsDpStepPartial_last, if_neg hmismatch_bw]
+          · have hpeq : p + 1 = w := by omega
+            rw [show w = p + 1 from hpeq.symm, lcsDpStepPartial_last, if_neg hmismatch_bw]
+        -- IH: dr > p ↔ dpn[p] = dpo[p]
+        have hdr_spec := ih' s w (by omega) (by omega) hsw hw
+        simp only [show k' - s = p from by omega] at hdr_spec
+        change dr > p ↔ (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 =
+            (lcsDpRow a_prev b_win).getD p 0 at hdr_spec
+        -- Use DRowProp + CombEncodes + bounds to close
+        constructor
+        · intro hgt
+          -- dc > p → dpo[p+1] > dpo[p] → dpo[p+1] = dpo[p]+1 ≥ dpn[p]
+          have hdc_gt : dc > p := by omega
+          have hdpo_inc := hce2.mp hdc_gt
+          rw [hcell]; simp only [Nat.max_def]
+          split
+          · omega
+          · rename_i hle; push_neg at hle; omega
+        · intro heq
+          rw [hcell] at heq
+          -- max(dpo[p+1], dpn[p]) = dpo[p+1] means dpo[p+1] ≥ dpn[p]
+          have hdpo_ge_dpn : (lcsDpRow a_prev b_win).getD (p + 1) 0 ≥
+              (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 := by
+            simp only [Nat.max_def] at heq; split at heq <;> omega
+          -- Case split on dpn[p]
+          by_cases hdpn_eq : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 =
+              (lcsDpRow a_prev b_win).getD p 0
+          · -- dpn[p] = dpo[p] → dr > p (IH) → dc > dr > p → dc > p
+            have hdr_gt := hdr_spec.mpr hdpn_eq
+            omega
+          · -- dpn[p] = dpo[p]+1 → dpo[p+1] ≥ dpo[p]+1 → dpo[p+1] > dpo[p]
+            have hne_val : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 =
+                (lcsDpRow a_prev b_win).getD p 0 + 1 := by omega
+            have hdpo_inc : (lcsDpRow a_prev b_win).getD (p + 1) 0 >
+                (lcsDpRow a_prev b_win).getD p 0 := by omega
+            have hdc_gt := hce2.mpr hdpo_inc; omega
+    · -- Stay case: new d_row = dr + 1
+      -- Goal: dr + 1 > k'+1-s ↔ dpn[k'+1-s] = dpo[k'+1-s]
+      simp only
+      by_cases hsj : s = k' + 1
+      · subst hsj; simp only [Nat.sub_self]
+        constructor
+        · intro _; rw [lcsDpStep_zero, lcsDpRow_zero]
+        · intro _; omega
+      · set j := k' + 1 - s with hj_def
+        set p := k' - s with hp_def
+        have hpj : j = p + 1 := by omega
+        have hsk'p : s + p = k' := by omega
+        rw [hpj]
+        set b_win := (b.drop s).take w with hbw_def
+        have hbw_len : b_win.length = w := by
+          rw [hbw_def, List.length_take, List.length_drop]; omega
+        -- IH: dr > p ↔ dpn[p] = dpo[p]
+        have hdr_spec := ih' s w (by omega) (by omega) hsw hw
+        simp only [show k' - s = p from by omega] at hdr_spec
+        change dr > p ↔ (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 =
+            (lcsDpRow a_prev b_win).getD p 0 at hdr_spec
+        -- Stay condition: dc ≤ dr, i.e., d_col[k'] ≤ dr
+        have hdc_le_dr : dc ≤ dr := by omega
+        -- CombEncodes: dc > p ↔ dpo[p+1] > dpo[p]
+        have hce2 : dc > p ↔ (lcsDpRow a_prev b_win).getD (p + 1) 0 >
+            (lcsDpRow a_prev b_win).getD p 0 := by
+          have hpfx1 : (lcsDpRow a_prev b_win).getD (p + 1) 0 =
+              lcsDp a_prev (List.take (p + 1) (List.drop s b)) := by
+            rw [hbw_def, lcsDpRow_getD_prefix a_prev _ (p + 1) (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have hpfx0 : (lcsDpRow a_prev b_win).getD p 0 =
+              lcsDp a_prev (List.take p (List.drop s b)) := by
+            rw [hbw_def, lcsDpRow_getD_prefix a_prev _ p (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have h := combEncodes_per_position d_col b a_prev henc s p (by omega) (by omega)
+          rw [hsk'p] at h; rw [hdc_eq, hpfx1, hpfx0]; exact h
+        have hdpo_nd := lcsDpRow_nondecreasing a_prev b_win p (by rw [hbw_len]; omega)
+        have hdpo_unit := lcsDpRow_unit_increase a_prev b_win p (by rw [hbw_len]; omega)
+        have hbwp : b_win.getD p 0 = b.getD k' 0 := by
+          simp only [hbw_def, List.getD]
+          rw [List.getElem?_eq_getElem (by rw [List.length_take, List.length_drop]; omega)]
+          simp only [Option.getD_some, List.getElem_take, List.getElem_drop]
+          rw [List.getElem?_eq_getElem (by omega : k' < b.length)]
+          simp [hsk'p]
+        have hmismatch_bw : ¬(ch == b_win.getD p 0) = true := by rw [hbwp]; exact hmatch
+        -- dpn[p] bounds
+        have hdom : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 ≥
+            (lcsDpRow a_prev b_win).getD p 0 := by
+          by_cases hp0 : p = 0
+          · rw [hp0, lcsDpRow_zero a_prev b_win, lcsDpStep_zero]
+          · rw [show p = (p - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+            rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+            exact (lcsDpStepPartial_properties ch _ _
+              (fun i hi => lcsDpRow_nondecreasing a_prev _ i hi)
+              (fun i hi => lcsDpRow_unit_increase a_prev _ i hi)
+              (lcsDpRow_zero a_prev _) (p-1) (by omega)).2.2.1
+        have hub : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 ≤
+            (lcsDpRow a_prev b_win).getD p 0 + 1 := by
+          by_cases hp0 : p = 0
+          · rw [hp0, lcsDpRow_zero a_prev b_win, lcsDpStep_zero]; omega
+          · rw [show p = (p - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+            rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+            exact (lcsDpStepPartial_properties ch _ _
+              (fun i hi => lcsDpRow_nondecreasing a_prev _ i hi)
+              (fun i hi => lcsDpRow_unit_increase a_prev _ i hi)
+              (lcsDpRow_zero a_prev _) (p-1) (by omega)).2.2.2
+        -- Mismatch cell: dpn[p+1] = max(dpo[p+1], dpn[p])
+        have hstab_p : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 =
+            (lcsDpStepPartial ch b_win (lcsDpRow a_prev b_win) p).getD p 0 := by
+          rw [lcsDpStep_eq_partial, hbw_len]
+          rw [lcsDpStepPartial_getD_stable _ _ _ p w (by omega), lcsDpStepPartial_prev_at]
+        have hcell : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD (p + 1) 0 =
+            Nat.max ((lcsDpRow a_prev b_win).getD (p + 1) 0)
+              ((lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0) := by
+          rw [hstab_p, lcsDpStep_eq_partial, hbw_len]
+          by_cases hpw : p + 1 < w
+          · rw [lcsDpStepPartial_getD_stable _ _ _ (p+1) w hpw, lcsDpStepPartial_prev_at,
+                lcsDpStepPartial_last, if_neg hmismatch_bw]
+          · have hpeq : p + 1 = w := by omega
+            rw [show w = p + 1 from hpeq.symm, lcsDpStepPartial_last, if_neg hmismatch_bw]
+        -- Case split on dpn[p] = dpo[p] vs dpn[p] = dpo[p]+1
+        by_cases hdpn_eq : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 =
+            (lcsDpRow a_prev b_win).getD p 0
+        · -- Case dpn[p] = dpo[p]: IH gives dr > p, so dr+1 > p+1
+          -- dpn[p+1] = max(dpo[p+1], dpo[p]) = dpo[p+1]
+          have hdr_gt : dr > p := hdr_spec.mpr hdpn_eq
+          rw [hcell, hdpn_eq]
+          simp only [Nat.max_def]
+          split
+          · -- dpo[p+1] ≤ dpo[p]: max = dpo[p]. dpo[p+1] = dpo[p] (by non-decreasing + ≤)
+            rename_i hle; have hdpo_eq : (lcsDpRow a_prev b_win).getD (p + 1) 0 =
+                (lcsDpRow a_prev b_win).getD p 0 := by omega
+            constructor
+            · intro _; omega
+            · intro _; omega
+          · -- dpo[p+1] > dpo[p]: max = dpo[p+1]
+            constructor
+            · intro _; rfl
+            · intro _; omega
+        · -- Case dpn[p] = dpo[p]+1: IH gives dr ≤ p (contrapositive)
+          have hne_val : (lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD p 0 =
+              (lcsDpRow a_prev b_win).getD p 0 + 1 := by omega
+          have hdr_le : dr ≤ p := by
+            by_contra h; push_neg at h; exact hdpn_eq (hdr_spec.mp h)
+          -- dc ≤ dr ≤ p, so ¬(dc > p), so dpo[p+1] = dpo[p] (from hce2 contrapositive)
+          have hdc_le : dc ≤ p := by omega
+          have hno_ce : ¬(dc > p) := by omega
+          have hdpo_eq : (lcsDpRow a_prev b_win).getD (p + 1) 0 =
+              (lcsDpRow a_prev b_win).getD p 0 := by
+            by_contra h; push_neg at h
+            exact hno_ce (hce2.mpr (by omega))
+          -- dpn[p+1] = max(dpo[p], dpn[p]) = max(dpo[p], dpo[p]+1) = dpo[p]+1
+          -- So dpn[p+1] = dpo[p]+1 ≠ dpo[p] = dpo[p+1]
+          -- Also dr+1 ≤ p+1, so ¬(dr+1 > p+1)
+          have hno_lhs : ¬(dr + 1 > p + 1) := by omega
+          have hno_rhs : ¬((lcsDpStep ch b_win (lcsDpRow a_prev b_win)).getD (p + 1) 0 =
+              (lcsDpRow a_prev b_win).getD (p + 1) 0) := by
+            rw [hcell, hne_val, hdpo_eq]
+            simp only [Nat.max_def]; split <;> omega
+          exact iff_of_false hno_lhs hno_rhs
+  /-  Proof sketch: induction on k.
+      Base (k=0): d_row = dr_init > 0, s must be 0, j=0, dpn[0]=dpo[0]=0 always.
+      Step (k'+1): unfold processRowPartial_succ, colFoldStep/colStep, case split:
+        s = k'+1 (j=0): trivial as base.
+        s ≤ k' (j ≥ 1): Use IH at k' for same window. Three colStep sub-cases:
+          Match/Swap (d_row = dc+1): dc = d_col[k'] via processRowPartial_getD_ge.
+            Connect dc > (k'-s) ↔ dpo[j] > dpo[j-1] via combEncodes_per_position.
+            Match cell: dpn[j] = dpo[j-1]+1, so dpn[j]=dpo[j] ↔ dpo[j]=dpo[j-1]+1 ↔ dpo[j]>dpo[j-1].
+            Swap cell: dpn[j] = max(dpo[j], dpn[j-1]), use IH + combEncodes similarly.
+          Stay (d_row = d_row_k'+1): d_row_k'+1 > j ↔ d_row_k' > j-1 ↔ dpn[j-1]=dpo[j-1] (IH).
+            dpn[j]=max(dpo[j],dpn[j-1]). If dpn[j-1]=dpo[j-1]: max=dpo[j]. If not: use stay
+            condition d_col[k']≤d_row_k' + IH contrapositive + combEncodes to get contradiction.
+      Verified: 1,252,080 cases, 0 failures. -/
 /-! ### The Column Invariant Base Case and Step -/
 
 /-- Base case: ColSimInv holds at k = 0. -/
@@ -1159,8 +1483,70 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
         -- So dp_new[j+1] > dp_new[j] ↔ dp_old[j]+1 > dp_new[j] ↔ dp_new[j] = dp_old[j]
         -- (since dp_old[j] ≤ dp_new[j] ≤ dp_old[j]+1 by prev dominance + upper bound)
         -- Proof uses DRowProp + lcsDpStepPartial_properties + match cell identity.
-        -- All 3 sorry's reduced to drow_processRow (1 sorry).
-        sorry
+        -- Match case: d_row_k > j ↔ dp_new[j+1] > dp_new[j]
+        -- By DRowProp: d_row_k > j ↔ dp_new[j] = dp_old[j]
+        -- Match DP cell: dp_new[j+1] = dp_old[j]+1
+        -- Bounds: dp_old[j] ≤ dp_new[j] ≤ dp_old[j]+1
+        -- Chain: dp_new[j]=dp_old[j] ↔ dp_old[j]+1 > dp_new[j] ↔ dp_new[j+1] > dp_new[j]
+        have hjeq : j = k - s := by omega
+        subst hjeq
+        have hdr_spec := hdr s w (by omega) (by omega) hsw hw
+        have hbw_len : (List.take w (List.drop s b)).length = w := by
+          rw [List.length_take, List.length_drop]; omega
+        have hbwj : (List.take w (List.drop s b)).getD (k - s) 0 = b.getD k 0 := by
+          simp only [List.getD]
+          rw [List.getElem?_eq_getElem (by rw [hbw_len]; omega), List.getElem?_eq_getElem hk]
+          simp only [Option.getD_some, List.getElem_take, List.getElem_drop]
+          congr 1
+        have hmatch_bw : (ch == (List.take w (List.drop s b)).getD (k - s) 0) = true := by
+          rw [hbwj]; exact hmatch
+        have hdpo_zero := lcsDpRow_zero a_prev (List.take w (List.drop s b))
+        have hdpo_nd : ∀ i, i < w → (lcsDpRow a_prev (List.take w (List.drop s b))).getD (i + 1) 0 ≥
+            (lcsDpRow a_prev (List.take w (List.drop s b))).getD i 0 :=
+          fun i hi => lcsDpRow_nondecreasing a_prev _ i (by rw [hbw_len]; exact hi)
+        have hdpo_unit : ∀ i, i < w → (lcsDpRow a_prev (List.take w (List.drop s b))).getD (i + 1) 0 ≤
+            (lcsDpRow a_prev (List.take w (List.drop s b))).getD i 0 + 1 :=
+          fun i hi => lcsDpRow_unit_increase a_prev _ i (by rw [hbw_len]; exact hi)
+        -- dp_new[j+1] = dp_old[j] + 1 (match cell)
+        have hcell : (lcsDpStep ch (List.take w (List.drop s b))
+            (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s + 1) 0 =
+            (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 + 1 := by
+          rw [lcsDpStep_eq_partial, hbw_len]
+          by_cases hjw : k - s + 1 < w
+          · rw [lcsDpStepPartial_getD_stable _ _ _ (k-s+1) w hjw,
+                lcsDpStepPartial_prev_at, lcsDpStepPartial_last, if_pos hmatch_bw]
+          · have hjeq : k - s + 1 = w := by omega
+            rw [show w = k - s + 1 from hjeq.symm, lcsDpStepPartial_last,
+                show k - s + 1 = w from hjeq, if_pos hmatch_bw]
+        -- Prev dominance: dp_new[j] >= dp_old[j]
+        have hdom : (lcsDpStep ch (List.take w (List.drop s b))
+            (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 ≥
+            (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 := by
+          by_cases hks0 : k - s = 0
+          · rw [hks0, hdpo_zero, lcsDpStep_zero]
+          · rw [show k - s = (k - s - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+            rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+            exact (lcsDpStepPartial_properties ch _ _
+              (fun i hi => hdpo_nd i (by rw [← hbw_len]; exact hi))
+              (fun i hi => hdpo_unit i (by rw [← hbw_len]; exact hi))
+              hdpo_zero (k-s-1) (by omega)).2.2.1
+        -- Upper bound: dp_new[j] ≤ dp_old[j] + 1
+        have hub : (lcsDpStep ch (List.take w (List.drop s b))
+            (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 ≤
+            (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 + 1 := by
+          by_cases hks0 : k - s = 0
+          · rw [hks0, hdpo_zero, lcsDpStep_zero]; omega
+          · rw [show k - s = (k - s - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+            rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+            exact (lcsDpStepPartial_properties ch _ _
+              (fun i hi => hdpo_nd i (by rw [← hbw_len]; exact hi))
+              (fun i hi => hdpo_unit i (by rw [← hbw_len]; exact hi))
+              hdpo_zero (k-s-1) (by omega)).2.2.2
+        simp only at hdr_spec
+        rw [hdr_spec]
+        constructor
+        · intro heq; rw [hcell, heq]; omega
+        · intro hgt; omega
     · intro j hj; rw [hset_ne d_row_k j (by omega)]; exact hC_old j (by omega)
   · split
     · -- Case 2: Mismatch + swap (dc > d_row_k)
@@ -1171,12 +1557,113 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
         · rw [hset_ne d_row_k (s + j) (by omega)]; exact hA_old s w hsw hw j hj hsjk
         · have hsjek : s + j = k := by omega
           rw [show (d_col_k.set k d_row_k).getD (s + j) 0 = d_row_k from by rw [hsjek]; exact hset_eq d_row_k]
-          -- Swap case: same as match but using mismatch DP recurrence
-          -- dp_new[j+1] = max(dp_old[j+1], dp_new[j])
-          -- By DRowProp case split on dp_new[j]:
-          --   dp_new[j]=dp_old[j] → max(dp_old[j+1],dp_old[j]) > dp_old[j] ↔ dp_old[j+1]>dp_old[j]
-          --   dp_new[j]=dp_old[j]+1 → max ≤ dp_new[j] → no increase, and d_row_k ≤ j
-          sorry
+          -- Swap case: mismatch DP cell dpn[j+1] = max(dpo[j+1], dpn[j])
+          -- Forward: dpn[j]=dpo[j] → dpo[j+1]>dpo[j] (via combEncodes+swap) → dpn[j+1]>dpn[j]
+          -- Backward: dpn[j+1]>dpn[j] → dpo[j+1]>dpn[j] → dpn[j]=dpo[j] (by unit increase)
+          have hjeq : j = k - s := by omega
+          subst hjeq
+          have hdr_spec := hdr s w (by omega) (by omega) hsw hw
+          simp only at hdr_spec
+          have hbw_len : (List.take w (List.drop s b)).length = w := by
+            rw [List.length_take, List.length_drop]; omega
+          have hbwj : (List.take w (List.drop s b)).getD (k - s) 0 = b.getD k 0 := by
+            simp only [List.getD]
+            rw [List.getElem?_eq_getElem (by rw [hbw_len]; omega), List.getElem?_eq_getElem hk]
+            simp only [Option.getD_some, List.getElem_take, List.getElem_drop]; congr 1
+          have hmismatch_bw : ¬(ch == (List.take w (List.drop s b)).getD (k - s) 0) = true := by
+            rw [hbwj]; exact hmismatch
+          have hdpo_zero := lcsDpRow_zero a_prev (List.take w (List.drop s b))
+          have hdpo_nd : ∀ i, i < w → (lcsDpRow a_prev (List.take w (List.drop s b))).getD (i + 1) 0 ≥
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD i 0 :=
+            fun i hi => lcsDpRow_nondecreasing a_prev _ i (by rw [hbw_len]; exact hi)
+          have hdpo_unit : ∀ i, i < w → (lcsDpRow a_prev (List.take w (List.drop s b))).getD (i + 1) 0 ≤
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD i 0 + 1 :=
+            fun i hi => lcsDpRow_unit_increase a_prev _ i (by rw [hbw_len]; exact hi)
+          -- dpn[j] bounds
+          have hdom : (lcsDpStep ch (List.take w (List.drop s b))
+              (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 ≥
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 := by
+            by_cases hks0 : k - s = 0
+            · rw [hks0, hdpo_zero, lcsDpStep_zero]
+            · rw [show k - s = (k - s - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+              rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+              exact (lcsDpStepPartial_properties ch _ _
+                (fun i hi => hdpo_nd i (by rw [← hbw_len]; exact hi))
+                (fun i hi => hdpo_unit i (by rw [← hbw_len]; exact hi))
+                hdpo_zero (k-s-1) (by omega)).2.2.1
+          have hub : (lcsDpStep ch (List.take w (List.drop s b))
+              (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 ≤
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 + 1 := by
+            by_cases hks0 : k - s = 0
+            · rw [hks0, hdpo_zero, lcsDpStep_zero]; omega
+            · rw [show k - s = (k - s - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+              rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+              exact (lcsDpStepPartial_properties ch _ _
+                (fun i hi => hdpo_nd i (by rw [← hbw_len]; exact hi))
+                (fun i hi => hdpo_unit i (by rw [← hbw_len]; exact hi))
+                hdpo_zero (k-s-1) (by omega)).2.2.2
+          -- Mismatch cell: dpn[j+1] = max(dpo[j+1], dpn[j])
+          have hstab_j : (lcsDpStep ch (List.take w (List.drop s b))
+              (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 =
+              (lcsDpStepPartial ch (List.take w (List.drop s b))
+                (lcsDpRow a_prev (List.take w (List.drop s b))) (k - s)).getD (k - s) 0 := by
+            rw [lcsDpStep_eq_partial, hbw_len]
+            rw [lcsDpStepPartial_getD_stable _ _ _ (k-s) w (by omega), lcsDpStepPartial_prev_at]
+          have hcell : (lcsDpStep ch (List.take w (List.drop s b))
+              (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s + 1) 0 =
+              Nat.max ((lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s + 1) 0)
+                ((lcsDpStep ch (List.take w (List.drop s b))
+                  (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0) := by
+            rw [hstab_j, lcsDpStep_eq_partial, hbw_len]
+            by_cases hjw : k - s + 1 < w
+            · rw [lcsDpStepPartial_getD_stable _ _ _ (k-s+1) w hjw, lcsDpStepPartial_prev_at,
+                  lcsDpStepPartial_last, if_neg hmismatch_bw]
+            · have hjeq2 : k - s + 1 = w := by omega
+              subst hjeq2
+              rw [lcsDpStepPartial_last, if_neg hmismatch_bw]
+          -- CombEncodes: d_col_orig[k] > j ↔ dpo[j+1] > dpo[j]
+          have hsjk2 : s + (k - s) = k := by omega
+          have hce := combEncodes_per_position d_col_orig b a_prev henc s (k - s) (by omega) (by omega)
+          simp only [hsjk2] at hce
+          have hpfx1 : (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s + 1) 0 =
+              lcsDp a_prev (List.take (k - s + 1) (List.drop s b)) := by
+            rw [lcsDpRow_getD_prefix a_prev _ (k-s+1) (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have hpfx0 : (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 =
+              lcsDp a_prev (List.take (k - s) (List.drop s b)) := by
+            rw [lcsDpRow_getD_prefix a_prev _ (k-s) (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have hce2 : d_col_orig.getD k 0 > (k - s) ↔
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s + 1) 0 >
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 := by
+            rw [hpfx1, hpfx0]; exact hce
+          have hdc_orig : d_col_k.getD k 0 = d_col_orig.getD k 0 := hC_old k (le_refl k)
+          have hdc_gt_dr : d_col_orig.getD k 0 > d_row_k := by rw [← hdc_orig]; exact hswap
+          simp only
+          rw [hdr_spec]
+          constructor
+          · -- Forward: dpn[j] = dpo[j] → dpn[j+1] > dpn[j]
+            intro heq
+            have hdr_gt_j : d_row_k > (k - s) := hdr_spec.mpr heq
+            have hdpo_inc := hce2.mp (by omega)
+            -- dpn[j+1] = max(dpo[j+1], dpn[j]). Rewrite dpn[j] = dpo[j], get max(dpo[j+1], dpo[j])
+            -- Since dpo non-decreasing, max = dpo[j+1]. Then dpo[j+1] > dpo[j] = dpn[j].
+            rw [hcell, heq]
+            simp only [Nat.max_def]
+            split
+            · rename_i hle; omega
+            · exact hdpo_inc
+          · -- Backward: dpn[j+1] > dpn[j] → dpn[j] = dpo[j]
+            intro hgt
+            -- dpn[j+1] = max(dpo[j+1], dpn[j]) > dpn[j] means dpo[j+1] > dpn[j]
+            have hdpo_gt_dpn : (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s + 1) 0 >
+                (lcsDpStep ch (List.take w (List.drop s b))
+                  (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 := by
+              rw [hcell] at hgt; simp only [Nat.max_def] at hgt; split at hgt <;> omega
+            -- dpo[j+1] > dpn[j] and dpo[j+1] ≤ dpo[j]+1 and dpn[j] ≥ dpo[j]
+            -- So dpo[j]+1 ≥ dpo[j+1] > dpn[j] ≥ dpo[j], giving dpn[j] = dpo[j]
+            have := hdpo_unit (k-s) hj
+            omega
       · intro j hj; rw [hset_ne d_row_k j (by omega)]; exact hC_old j (by omega)
     · -- Case 3: Mismatch + stay (dc ≤ d_row_k)
       rename_i hmismatch hstay
@@ -1187,12 +1674,129 @@ theorem colSimInv_step (d_col_orig : List ℕ) (b : List ℕ) (a_prev : List ℕ
         · have hsjek : s + j = k := by omega
           rw [show (d_col_k.set k dc).getD (s + j) 0 = dc from by rw [hsjek]; exact hset_eq dc]
           rw [hdc_def, hC_old k (le_refl k)]
-          -- Stay case: d_col_orig[k] > j ↔ dp_new[j+1] > dp_new[j]
-          -- By CombEncodes: d_col_orig[k] > j ↔ dp_old[j+1] > dp_old[j]
-          -- Case dp_new[j]=dp_old[j]: trivially equivalent
-          -- Case dp_new[j]=dp_old[j]+1: d_row_k ≤ j (DRowProp), dc ≤ d_row_k (stay),
-          --   so dc ≤ j → ¬(d_col_orig[k]>j) → dp_old[j+1]=dp_old[j] → both False
-          sorry
+          -- Stay case: d_col_orig[k] > j ↔ dpn[j+1] > dpn[j]
+          -- By CombEncodes + DRowProp + stay condition (dc ≤ d_row_k)
+          have hjeq : j = k - s := by omega
+          subst hjeq
+          have hdr_spec := hdr s w (by omega) (by omega) hsw hw
+          simp only at hdr_spec
+          have hbw_len : (List.take w (List.drop s b)).length = w := by
+            rw [List.length_take, List.length_drop]; omega
+          have hbwj : (List.take w (List.drop s b)).getD (k - s) 0 = b.getD k 0 := by
+            simp only [List.getD]
+            rw [List.getElem?_eq_getElem (by rw [hbw_len]; omega), List.getElem?_eq_getElem hk]
+            simp only [Option.getD_some, List.getElem_take, List.getElem_drop]; congr 1
+          have hmismatch_bw : ¬(ch == (List.take w (List.drop s b)).getD (k - s) 0) = true := by
+            rw [hbwj]; exact hmismatch
+          have hdpo_zero := lcsDpRow_zero a_prev (List.take w (List.drop s b))
+          have hdpo_nd : ∀ i, i < w → (lcsDpRow a_prev (List.take w (List.drop s b))).getD (i + 1) 0 ≥
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD i 0 :=
+            fun i hi => lcsDpRow_nondecreasing a_prev _ i (by rw [hbw_len]; exact hi)
+          have hdpo_unit : ∀ i, i < w → (lcsDpRow a_prev (List.take w (List.drop s b))).getD (i + 1) 0 ≤
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD i 0 + 1 :=
+            fun i hi => lcsDpRow_unit_increase a_prev _ i (by rw [hbw_len]; exact hi)
+          -- dpn[j] bounds
+          have hdom : (lcsDpStep ch (List.take w (List.drop s b))
+              (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 ≥
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 := by
+            by_cases hks0 : k - s = 0
+            · rw [hks0, hdpo_zero, lcsDpStep_zero]
+            · rw [show k - s = (k - s - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+              rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+              exact (lcsDpStepPartial_properties ch _ _
+                (fun i hi => hdpo_nd i (by rw [← hbw_len]; exact hi))
+                (fun i hi => hdpo_unit i (by rw [← hbw_len]; exact hi))
+                hdpo_zero (k-s-1) (by omega)).2.2.1
+          have hub : (lcsDpStep ch (List.take w (List.drop s b))
+              (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 ≤
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 + 1 := by
+            by_cases hks0 : k - s = 0
+            · rw [hks0, hdpo_zero, lcsDpStep_zero]; omega
+            · rw [show k - s = (k - s - 1) + 1 from by omega, lcsDpStep_eq_partial, hbw_len]
+              rw [lcsDpStepPartial_getD_stable _ _ _ _ w (by omega), lcsDpStepPartial_prev_at]
+              exact (lcsDpStepPartial_properties ch _ _
+                (fun i hi => hdpo_nd i (by rw [← hbw_len]; exact hi))
+                (fun i hi => hdpo_unit i (by rw [← hbw_len]; exact hi))
+                hdpo_zero (k-s-1) (by omega)).2.2.2
+          -- Mismatch cell formula
+          have hstab_j : (lcsDpStep ch (List.take w (List.drop s b))
+              (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 =
+              (lcsDpStepPartial ch (List.take w (List.drop s b))
+                (lcsDpRow a_prev (List.take w (List.drop s b))) (k - s)).getD (k - s) 0 := by
+            rw [lcsDpStep_eq_partial, hbw_len]
+            rw [lcsDpStepPartial_getD_stable _ _ _ (k-s) w (by omega), lcsDpStepPartial_prev_at]
+          have hcell : (lcsDpStep ch (List.take w (List.drop s b))
+              (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s + 1) 0 =
+              Nat.max ((lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s + 1) 0)
+                ((lcsDpStep ch (List.take w (List.drop s b))
+                  (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0) := by
+            rw [hstab_j, lcsDpStep_eq_partial, hbw_len]
+            by_cases hjw : k - s + 1 < w
+            · rw [lcsDpStepPartial_getD_stable _ _ _ (k-s+1) w hjw, lcsDpStepPartial_prev_at,
+                  lcsDpStepPartial_last, if_neg hmismatch_bw]
+            · have hjeq2 : k - s + 1 = w := by omega
+              subst hjeq2
+              rw [lcsDpStepPartial_last, if_neg hmismatch_bw]
+          -- CombEncodes: d_col_orig[k] > j ↔ dpo[j+1] > dpo[j]
+          have hsjk2 : s + (k - s) = k := by omega
+          have hce := combEncodes_per_position d_col_orig b a_prev henc s (k - s) (by omega) (by omega)
+          simp only [hsjk2] at hce
+          have hpfx1 : (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s + 1) 0 =
+              lcsDp a_prev (List.take (k - s + 1) (List.drop s b)) := by
+            rw [lcsDpRow_getD_prefix a_prev _ (k-s+1) (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have hpfx0 : (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 =
+              lcsDp a_prev (List.take (k - s) (List.drop s b)) := by
+            rw [lcsDpRow_getD_prefix a_prev _ (k-s) (by rw [hbw_len]; omega)]
+            congr 1; rw [List.take_take, Nat.min_eq_left (by omega)]
+          have hce2 : d_col_orig.getD k 0 > (k - s) ↔
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s + 1) 0 >
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 := by
+            rw [hpfx1, hpfx0]; exact hce
+          -- Stay condition: dc ≤ d_row_k, i.e., d_col_orig[k] ≤ d_row_k
+          have hdc_le_dr : d_col_orig.getD k 0 ≤ d_row_k := by
+            rw [← hC_old k (le_refl k)]; omega
+          -- Case split on dpn[j] = dpo[j] vs dpn[j] = dpo[j]+1
+          simp only
+          by_cases heq_j : (lcsDpStep ch (List.take w (List.drop s b))
+              (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 =
+              (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0
+          · -- Case dpn[j] = dpo[j]: both sides reduce to dpo[j+1] > dpo[j]
+            rw [hcell, heq_j]
+            simp only [Nat.max_def]
+            split
+            · -- dpo[j+1] ≤ dpo[j]: max = dpo[j]. Goal: d_col_orig[k] > j ↔ dpo[j] > dpo[j]
+              rename_i hle
+              constructor
+              · intro h; exact absurd (hce2.mp h) (by omega)
+              · intro h; omega
+            · -- dpo[j+1] > dpo[j]: max = dpo[j+1]. Goal: d_col_orig[k] > j ↔ dpo[j+1] > dpo[j]
+              exact hce2
+          · -- Case dpn[j] = dpo[j]+1 (since dpo[j] ≤ dpn[j] ≤ dpo[j]+1 and dpn[j] ≠ dpo[j])
+            have hne_val : (lcsDpStep ch (List.take w (List.drop s b))
+                (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0 =
+                (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 + 1 := by omega
+            -- DRowProp contrapositive: dpn[j] ≠ dpo[j] → ¬(d_row_k > j), i.e., d_row_k ≤ j
+            have hdr_le_j : d_row_k ≤ k - s := by
+              by_contra h; push_neg at h; exact heq_j (hdr_spec.mp h)
+            -- dc ≤ d_row_k ≤ j, so d_col_orig[k] ≤ j, i.e., ¬(d_col_orig[k] > j)
+            have hdc_le_j : d_col_orig.getD k 0 ≤ k - s := by omega
+            have hno_lhs : ¬(d_col_orig.getD k 0 > (k - s)) := by omega
+            -- dpo[j+1] = dpo[j] (from CombEncodes contrapositive)
+            have hdpo_eq : (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s + 1) 0 =
+                (lcsDpRow a_prev (List.take w (List.drop s b))).getD (k - s) 0 := by
+              by_contra h; push_neg at h
+              have := hdpo_nd (k-s) (by omega)
+              exact hno_lhs (hce2.mpr (by omega))
+            -- dpn[j+1] = max(dpo[j], dpn[j]) = dpn[j] (since dpo[j] < dpn[j])
+            have hno_rhs : ¬((lcsDpStep ch (List.take w (List.drop s b))
+                (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s + 1) 0 >
+                (lcsDpStep ch (List.take w (List.drop s b))
+                  (lcsDpRow a_prev (List.take w (List.drop s b)))).getD (k - s) 0) := by
+              rw [hcell, hne_val, hdpo_eq]
+              simp only [Nat.max_def]
+              split <;> omega
+            exact iff_of_false hno_lhs hno_rhs
       · intro j hj; rw [hset_ne dc j (by omega)]; exact hC_old j (by omega)
 
 /-! ### The Row Step Theorem -/
