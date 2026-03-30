@@ -10,5 +10,17 @@ missfont.log
 # Lean build cache
 lean/.lake/
 
+# Python
+__pycache__/
+
+# Research scripts and data (behind-the-scenes, not for public repo)
+lean/*.py
+lean/depth_study_data.json
+
+# Internal research and development
+dev/
+docs/
+CLAUDE.md
+
 # OS
 .DS_Store

@@ -1,23 +1,63 @@
-\documentclass[11pt]{article}
-\usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb,amsthm}
-\usepackage{hyperref}
+\documentclass[11pt, a4paper]{article}
+
+% --- Layout & Spacing ---
+\usepackage[margin=1.2in, top=1.2in, bottom=1.2in]{geometry}
+\usepackage{setspace}
+\setstretch{1.05} % Slight increase in line spacing for readability
+
+% --- Modern Typography ---
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amsthm,amssymb} % Load AMS before fonts to avoid \Bbbk clash
+\usepackage{newpxtext, newpxmath} % Elegant Palatino-style font
+\usepackage{microtype} % Optical margin alignment and font expansion
+\usepackage{inconsolata} % Cleaner monospace font for URLs and code
+\usepackage{url}
+\Urlmuskip=0mu plus 3mu % Allow URL line breaks
+
+% --- Float placement ---
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{4}
+\renewcommand{\topfraction}{0.85}
+\renewcommand{\bottomfraction}{0.7}
+\renewcommand{\textfraction}{0.1}
+\renewcommand{\floatpagefraction}{0.7}
+
+% --- Color Palette ---
+\usepackage{xcolor}
+\definecolor{OxfordBlue}{RGB}{0, 33, 71}
+\definecolor{CrimsonRed}{RGB}{153, 0, 0}
+\definecolor{SoftGray}{RGB}{245, 245, 248}
+
+% --- Links & Metadata ---
+\usepackage[colorlinks=true,
+            linkcolor=OxfordBlue,
+            citecolor=CrimsonRed,
+            urlcolor=OxfordBlue]{hyperref}
+
+% --- Math & Graphics ---
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,decorations.pathreplacing}
 \usepackage{booktabs}
 \usepackage[ruled,linesnumbered,vlined]{algorithm2e}
 
-% Theorem environments — global numbering
+% --- Section Styling ---
+\usepackage{titlesec}
+\titleformat{\section}{\Large\bfseries\color{OxfordBlue}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{OxfordBlue}}{\thesubsection}{1em}{}
+
+% --- Standard Premium Theorem Environments ---
+\theoremstyle{definition}
 \newtheorem{theorem}{Theorem}
+\newtheorem{definition}[theorem]{Definition}
 \newtheorem{lemma}[theorem]{Lemma}
 \newtheorem{proposition}[theorem]{Proposition}
 \newtheorem{corollary}[theorem]{Corollary}
-\theoremstyle{definition}
-\newtheorem{definition}[theorem]{Definition}
+
 \theoremstyle{remark}
 \newtheorem{remark}[theorem]{Remark}
 
-% Notation macros
+% --- Notation Macros ---
 \newcommand{\LCS}{\operatorname{LCS}}
 \newcommand{\dcol}{\mathbf{d}}
 \newcommand{\drow}{\mathbf{r}}
@@ -27,72 +67,151 @@
 \newcommand{\Nat}{\mathbb{N}}
 \newcommand{\Real}{\mathbb{R}}
 
-\title{Semi-Local Affine Gap Scoring\\via Augmented Seaweed Combs}
-\author{Gong Chen\\
-\small UC Davis Genome Center, University of California, Davis\\
-\small \texttt{dsbchen@ucdavis.edu}}
-\date{}
+% --- Title Information ---
+\title{\vspace{-2em}\color{OxfordBlue}\textbf{Augmented Semi-Local String Comparison:\\Algorithms and Applications}}
+\author{\textbf{Gong Chen} \\
+\normalsize UC Davis Genome Center, University of California, Davis\\
+\normalsize \href{mailto:dsbchen@ucdavis.edu}{\texttt{dsbchen@ucdavis.edu}}}
+\date{\vspace{-2em}}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Affine gap penalties are central to DNA, RNA, and protein sequence alignment, yet incorporating them into Tiskin's composable semi-local string comparison framework has required a costly sentinel blow-up ($\nu^2$ expansion in string length).  We resolve this by introducing the \emph{augmented seaweed comb}: each wire of the Krusche comb carries a gap depth counter that resets on match and increments on mismatch.  The augmented output determines the complete Gotoh DP state---all three matrices $H$, $E$, $F$---with zero ambiguity.  The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$, with $\bigO(n \log n)$ composition.  We establish an exact bijection with the sentinel blow-up, achieving $2\times$ storage overhead versus $\nu\times$, and prove that the semi-local affine gap score matrix is not Monge, confirming the wreath product extension is necessary.
+Tiskin's semi-local framework offers composable $\bigO(n \log n)$ string comparison, but affine gap penalties---essential for biological sequence alignment---have required a costly sentinel blow-up ($\nu^2$ expansion in string length).
+We resolve this by introducing the \emph{augmented seaweed comb}: each entry of the distance column~$\dcol$ carries a gap depth counter that resets on match and increments on mismatch.
+The augmented output determines the complete Gotoh DP state---all three matrices $H$, $E$, $F$.
+The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$, with $\bigO(n \log n)$ composition.
+We establish an exact bijection with the sentinel blow-up, achieving $2\times$ storage overhead versus $\nu\times$, and prove that the semi-local affine gap score matrix is not Monge, confirming the wreath product extension is necessary.
 \end{abstract}
 
 \section{Introduction}\label{sec:intro}
 
-The \emph{semi-local longest common subsequence} (LCS) problem asks: given strings $A$ of length~$m$ and $B$ of length~$n$ over a finite alphabet~$\Sigma$, compute $\LCS(A', B')$ for all contiguous substring pairs.  Tiskin~\cite{tiskin2006semi,tiskin2008semi,tiskin2022book} showed that the complete answer---comprising $\Theta(mn)$ distinct scores---is encoded by a single permutation on $m{+}n$ elements, composable via \emph{distance multiplication} in $\bigO(n \log n)$ time.  Krusche~\cite{krusche2010phd} and Krusche and Tiskin~\cite{krusche2009plots} introduced the \emph{distance column}~$\dcol$, a vector of~$n$ integers that retains enough information to extract all string-substring LCS scores and can be composed incrementally in $\bigO(n)$ per query character.  This composability makes the distance column attractive for seed-and-extend alignment pipelines, where thousands of candidate windows must be scored against a common reference.  The framework has found applications in approximate pattern matching, transposition distance, and RNA alignment~\cite{tiskin2022book}.
+The \emph{semi-local longest common subsequence} (LCS) problem asks: given strings $A$ of length~$m$ and $B$ of length~$n$ over a finite alphabet~$\Sigma$, compute $\LCS(A', B')$ for all contiguous substring pairs.
+Tiskin~\cite{tiskin2006semi,tiskin2008semi} showed that the complete answer---comprising $\Theta(mn)$ distinct scores---is encoded by a single permutation on $m{+}n$ elements, composable via \emph{distance multiplication} in $\bigO(n \log n)$ time.
 
-All practical sequence aligners penalize gaps---insertions and deletions that interrupt the alignment.  The natural question is whether the distance column suffices for gap-penalized scoring.  Tiskin's sentinel blow-up~\cite{tiskin2022book,tiskin2019bounded} provides one answer: replace each character~$c$ with $\$^g c$ where~$\$$ is a fresh sentinel, compute the standard semi-local LCS on the expanded strings, and read off gap-penalized scores from the expanded distance column of length~$n\nu$ with $\nu = g{+}1$.  This works, but the $\nu^2$ expansion in string length is costly.  The distance pair $(\dcol, \drow)$ is provably insufficient: pairs of inputs with identical $(\dcol, \drow)$ produce distinct gap-penalized scores, and $\drow$ is not preserved under composition since row distances are overwritten during the comb sweep.  The blow-up has therefore remained the only known route to semi-local gap scoring.
+Krusche~\cite{krusche2010spaa} and Krusche and Tiskin~\cite{krusche2009plots} reformulated this into the \emph{distance column}~$\dcol$, a vector of~$n$ integers that can be composed incrementally in $\bigO(n)$ per query character.
+This composability makes the distance column attractive for seed-and-extend alignment pipelines, where thousands of candidate windows must be scored against a common reference~\cite{tiskin2008semi}.
 
-We resolve the affine gap scoring problem by introducing the \emph{augmented seaweed comb}.  Each wire in the Krusche comb carries a \emph{gap depth counter}---a non-negative integer that resets to zero on match and increments by one on mismatch.  The augmented output $(\dcol, \delta_{\mathrm{col}}, \delta_{\mathrm{row}})$ determines the complete Gotoh DP state---all three matrices $H$, $E$, $F$---with zero ambiguity (Theorem~\ref{thm:score-determination}).  The depth counter is a pure observer: it does not affect any label comparison, so the standard permutation is preserved exactly.  The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$ (Theorem~\ref{thm:wreath}), where each wire's depth transformation is an affine function $x \mapsto ax + b$ with $a \in \{0,1\}$, and composition retains $\bigO(n \log n)$ complexity (Theorem~\ref{thm:composition}).  The augmented representation is in exact bijection with the sentinel blow-up (Theorem~\ref{thm:bijection}), achieving $2\times$ storage overhead versus $\nu\times$.  We also prove that the semi-local affine gap score matrix is not Monge (Theorem~\ref{thm:non-monge}), confirming that the wreath product extension---rather than Monge-based composition---is necessary.  Key algebraic properties are formally verified in Lean~4, with 304 theorems and lemmas across 20 files; the proof scripts are available at \texttt{https://github.com/97YearsOldProgrammer/augmented-seaweed-combs}.
+All practical sequence aligners penalize gaps---insertions and deletions that interrupt the alignment.
+The natural question is whether the distance column suffices for gap-penalized scoring.
+Tiskin's sentinel blow-up~\cite{tiskin2008semi,tiskin2019bounded} provides one answer: replace each character~$c$ with $\$^g c$ where~$\$$ is a fresh sentinel, compute the standard semi-local LCS on the expanded strings, and read off gap-penalized scores from the expanded distance column of length~$n\nu$ with $\nu = g{+}1$.
+This works, but the $\nu^2$ expansion in string length is costly.
+The distance pair $(\dcol, \drow)$ is provably insufficient: pairs of inputs with identical $(\dcol, \drow)$ produce distinct gap-penalized scores, and $\drow$ is not preserved under composition since row distances are overwritten during the comb sweep.
+The blow-up has therefore remained the only known route to semi-local gap scoring.
 
-The semi-local framework and its extensions have attracted sustained interest.  Tiskin's monograph~\cite{tiskin2022book} consolidates the theory of seaweed braids, distance multiplication, and the sentinel blow-up for bounded-length Smith--Waterman alignment~\cite{tiskin2019bounded}.  State-of-the-art algorithms for weighted sequence alignment uniformly rely on the blow-up or its structural equivalent: Cassis, Kociumaka, and Wellnitz~\cite{cassis2023weighted} achieve optimal bounded weighted edit distance via blow-up and Tiskin composition; Gorbachev and Kociumaka~\cite{gorbachev2025bounded} extend this to integer weights using core-sparse Monge multiplication~\cite{gawrychowski2025coresparse}; Charalampopoulos, Kociumaka, and Mozes~\cite{charalampopoulos2020dynamic} use the full Tiskin framework for dynamic string alignment.  On the structural side, Russo~\cite{russo2012monge} established Monge properties of gap-penalized score matrices, and Carmel, Tsur, and Ziv-Ukelson~\cite{carmel2016almost} studied almost-Monge structure in alignment scoring.  The augmented comb provides an alternative that avoids the $\nu^2$ expansion entirely, while preserving the composability that makes the Tiskin framework algorithmically useful.
+We resolve the affine gap scoring problem by introducing the \emph{augmented seaweed comb}.
+Each wire in the Krusche comb carries a \emph{gap depth counter}---a non-negative integer that resets to zero on match and increments by one on mismatch.
+The augmented output $(\dcol, \delta_{\mathrm{col}}, \delta_{\mathrm{row}})$ determines the complete Gotoh DP state---all three matrices $H$, $E$, $F$---at every window position.
+The depth counter is a pure observer that does not affect label comparisons, so the standard permutation is preserved.
+The algebraic structure is the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$, with $\bigO(n \log n)$ composition.
+We establish an exact bijection with the sentinel blow-up at
+constant overhead independent of the gap penalty, and prove that
+Monge-based composition cannot extend to affine gap scoring.
+Key results are formally verified in Lean~4; proof scripts are
+available at
+\url{https://github.com/97YearsOldProgrammer/augmented-seaweed-combs}.
 
-Section~\ref{sec:prelim} recalls the Tiskin--Krusche framework and the Gotoh affine gap model.  Sections~\ref{sec:augmented}--\ref{sec:extraction} introduce the augmented comb, its wreath product algebraic structure, and score extraction.  Algorithms~\ref{alg:augmented-build}--\ref{alg:banded-gotoh} provide complete pseudocode for the augmented comb build, wreath product composition, adaptive score extraction, and $\varepsilon$-banded path extraction.  Section~\ref{sec:non-monge} establishes the non-Monge negative results.  Section~\ref{sec:blowup} proves the bijection with the sentinel blow-up.  Section~\ref{sec:conclusion} concludes.
+\begin{sloppypar}
+Current sequence
+aligners---including minimap2~\cite{li2018minimap2},
+STAR~\cite{dobin2013star}, and
+DIAMOND~\cite{buchfink2015diamond}---score each candidate window
+via full Gotoh~DP in $\bigO(m^2)$ time per window.  The augmented
+comb replaces this with a single $\bigO(mn)$ build whose output
+scores all windows simultaneously, with per-window extraction in
+$\bigO(m\varepsilon)$ where $\varepsilon$ is the excess of LCS
+over diagonal matches and is typically small for biological
+sequences.
+\end{sloppypar}
+
+\begin{sloppypar}
+The semi-local framework and its extensions have attracted
+sustained interest.
+Tiskin's monograph~\cite{tiskin2022book} consolidates the theory
+of seaweed braids, distance multiplication, and the sentinel
+blow-up for bounded-length Smith--Waterman
+alignment~\cite{tiskin2019bounded}.  State-of-the-art algorithms
+for weighted sequence alignment uniformly rely on the blow-up or
+its structural equivalent:
+Cassis, Kociumaka, and Wellnitz~\cite{cassis2023weighted} achieve
+optimal bounded weighted edit distance via blow-up and Tiskin
+composition; Gorbachev and
+Kociumaka~\cite{gorbachev2025bounded} extend this to integer
+weights using core-sparse Monge
+multiplication~\cite{gawrychowski2025coresparse};
+Charalampopoulos, Kociumaka, and
+Mozes~\cite{charalampopoulos2020dynamic} use the full Tiskin
+framework for dynamic string alignment.  On the structural side,
+Russo~\cite{russo2012monge} established Monge properties of
+gap-penalized score matrices, and Carmel, Tsur, and
+Ziv-Ukelson~\cite{carmel2016almost} studied almost-Monge
+structure in alignment scoring.  The augmented comb provides an
+alternative that avoids the $\nu^2$ expansion entirely, while
+preserving the composability that makes the Tiskin framework
+algorithmically useful.
+\end{sloppypar}
+
+Section~\ref{sec:prelim} recalls the Tiskin--Krusche framework and the Gotoh affine gap model.
+Sections~\ref{sec:augmented}--\ref{sec:extraction} introduce the augmented comb, its wreath product algebraic structure, and score extraction.
+Algorithms~\ref{alg:augmented-build}--\ref{alg:banded-gotoh} provide complete pseudocode for the augmented comb build, wreath product composition, adaptive score extraction, and $\varepsilon$-banded path extraction.
+Section~\ref{sec:non-monge} establishes the non-Monge negative results.  Section~\ref{sec:blowup} proves the bijection with the sentinel blow-up.  Section~\ref{sec:conclusion} concludes.
 
 \section{Preliminaries}\label{sec:prelim}
 
-We follow the notation of Tiskin~\cite{tiskin2022book}.  Let
+We follow the notation of Tiskin~\cite{tiskin2008semi}.  Let
 $A = a_0 a_1 \dots a_{m-1}$ and $B = b_0 b_1 \dots b_{n-1}$ be
-strings over a finite alphabet~$\Sigma$ of size~$\alpha$.  We
+strings over a finite alphabet~$\Sigma$ of size~$\alpha$.
+We
 write $B[s{:}t]$ for the substring $b_s b_{s+1} \dots b_{t-1}$.
 The \emph{tropical semiring} is
 $\Trop = (\Real \cup \{-\infty\}, \max, +)$.
 
+Informally, $m{+}n$ wires pass through the $m \times n$ comparison
+grid; at each mismatch, adjacent wires swap if out of order.
+The
+final wire permutation encodes all semi-local LCS scores
+simultaneously.
+
 \begin{definition}[Seaweed braid and permutation]
 \label{def:seaweed}
 The \emph{seaweed braid} for $(A, B)$ operates on
-$m{+}n$ wires indexed $0, 1, \dots, m{+}n{-}1$.  At cell
+$m{+}n$ wires indexed $0, 1, \dots, m{+}n{-}1$.
+At cell
 $(r, c)$ with $0 \le r < m$ and $0 \le c < n$, the pair of
 wires at adjacent positions $t = c - r + m - 1$ and $t{+}1$
 interact: if $a_r \ne b_c$ and the left-to-right label ordering
-has $\ell_t < \ell_{t+1}$, the wires swap; otherwise they do
+has $\ell_t < \ell_{t+1}$, the wires swap;
+otherwise they do
 not.  (On match, $a_r = b_c$, no interaction occurs regardless of
 label ordering.)  The resulting label permutation defines
 $\perm_{A,B} \in S_{m+n}$, which encodes all semi-local LCS
 scores via the correspondence with non-crossing
-partitions~\cite{tiskin2022book}.
+partitions~\cite{tiskin2008semi}.
 \end{definition}
 
-\begin{figure}[ht]
+\begin{figure}[!htbp]
 \centering
 \input{figures/fig_krusche_comb}
 \caption{The Krusche comb for $A = \texttt{AB}$, $B = \texttt{ABBA}$.}
 \label{fig:krusche}
 \end{figure}
 
-The braid permutation encodes LCS scores implicitly; to make them
+The braid permutation encodes LCS scores implicitly;
+to make them
 explicit we use the \emph{Krusche comb}, an incremental
-reformulation due to Krusche~\cite{krusche2010phd} that replaces
+reformulation due to Krusche~\cite{krusche2010spaa} that replaces
 wire tracking with a pair of distance vectors.
+Intuitively,
+$\dcol[c]$ records how far into the query the crossings at reference
+position~$c$ have reached.
 
 \begin{definition}[Krusche comb and distance vectors]
 \label{def:krusche}
 The \emph{Krusche comb} maintains two vectors: column distances
 $\dcol[0{:}n]$ initialized to~$0$ and row distances
-$\drow[0{:}m]$ initialized to $\drow[i] = i{+}1$.  Processing
+$\drow[0{:}m]$ initialized to $\drow[i] = i{+}1$.
+Processing
 proceeds cell by cell in row-major order.  At cell $(r, c)$:
 \begin{itemize}
   \item If $a_r = b_c$ (match): swap unconditionally,
@@ -135,18 +254,21 @@ $g \ge 1$ is defined by the recurrence
   \bigr),
 \]
 with semi-global boundary conditions $H(0, j) = 0$ for all~$j$
-and $H(i, 0) = -ig$.  The score is $\max_j H(m, j)$.
+and $H(i, 0) = -ig$.
+The score is $\max_j H(m, j)$.
 \end{definition}
 
 In practice, opening a gap incurs a larger cost than extending
-one.  The affine model of Gotoh~\cite{gotoh1982improved}
+one.
+The affine model of Gotoh~\cite{gotoh1982improved}
 captures this asymmetry.
 
 \begin{definition}[Affine gap score (Gotoh model)]
 \label{def:affine-gap}
 The \emph{affine gap score} replaces the single penalty~$g$
 with a gap-open penalty $g_o \geq 1$ and a gap-extend
-penalty $g_e \geq 1$.  The DP uses three matrices:
+penalty $g_e \geq 1$.
+The DP uses three matrices:
 \begin{align*}
   H(i,j) &= \max\!\bigl(
     H(i{-}1, j{-}1) + [a_{i-1} = b_{s+j-1}],\;
@@ -163,48 +285,59 @@ The score is $\max_j H(m, j)$.
 
 \section{The Augmented Seaweed Comb}\label{sec:augmented}
 
-The scoring hierarchy reveals that gap-penalized scoring requires
-information beyond the plain distance vectors.  The sentinel
-blow-up of Tiskin~\cite{tiskin2022book} provides one solution at
-the cost of a~$\nu^2$ expansion.  We now show that the same
-information can be captured more directly: by augmenting each wire
-with a single integer counter.
+Gap-penalized scoring requires information beyond the plain distance
+vectors.
+The sentinel blow-up of Tiskin~\cite{tiskin2008semi}
+provides one solution at the cost of a~$\nu^2$ expansion.
+The key
+observation is that the blow-up's $\nu$ extra wires per character
+encode only a one-dimensional quantity---the consecutive mismatch
+count at each position.
+A single integer counter per wire captures
+the same information directly.
 
 \begin{definition}[Gap depth and the augmented comb]
 \label{def:augmented-comb}
 The \emph{augmented Krusche comb} extends the standard comb
 (Definition~\ref{def:krusche}) by assigning to each wire a
 \emph{gap depth} $\delta \in \mathbb{Z}_{\geq 0}$, initialized
-to zero.  Each column~$c$ carries
+to zero.
+Each column~$c$ carries
 $(\dcol[c],\, \delta_{\mathrm{col}}[c])$ and each row~$r$ carries
 $(\drow[r],\, \delta_{\mathrm{row}}[r])$.  At cell $(r, c)$:
 
 \noindent
 (a)~\textbf{Match} ($a_r = b_c$): Swap labels
-$\dcol[c] \leftrightarrow \drow[r]$ (standard).  Reset both
+$\dcol[c] \leftrightarrow \drow[r]$ (standard).
+Reset both
 depths: $\delta_{\mathrm{col}}[c] \leftarrow 0$,
 $\delta_{\mathrm{row}}[r] \leftarrow 0$.
 
 \noindent
 (b)~\textbf{Mismatch, swap} ($\dcol[c] > \drow[r]$): Swap labels
-(standard sort).  Depths follow their swapped labels and
+(standard sort).
+Depths follow their swapped labels and
 increment:
 $\delta_{\mathrm{col}}[c] \leftarrow \delta_{\mathrm{row}}[r]+1$,
 $\delta_{\mathrm{row}}[r] \leftarrow \delta_{\mathrm{col}}[c]+1$.
 
 \noindent
 (c)~\textbf{Mismatch, no swap} ($\dcol[c] \leq \drow[r]$):
-Labels unchanged.  Depths increment:
+Labels unchanged.
+Depths increment:
 $\delta_{\mathrm{col}}[c] \leftarrow \delta_{\mathrm{col}}[c]+1$,
 $\delta_{\mathrm{row}}[r] \leftarrow \delta_{\mathrm{row}}[r]+1$.
 
 \noindent
 In all cases, $\drow[r] \mathrel{{+}{=}} 1$ (standard).
+In the mismatch-swap case, depth travels with the wire identity:
+a wire that has been mismatching for $k$~steps carries that history
+even after being rerouted by a swap.
 \end{definition}
 
 Algorithm~\ref{alg:augmented-build} formalizes Definition~\ref{def:augmented-comb} into executable pseudocode.
 
-\begin{algorithm}[H]
+\begin{algorithm}[htbp]
 \caption{Augmented Comb Build}\label{alg:augmented-build}
 \KwIn{Query $A[0..m{-}1]$, reference $B[0..n{-}1]$}
 \KwOut{$({\dcol}, \delta_{\mathrm{col}}, \drow, \delta_{\mathrm{row}})$}
@@ -223,7 +356,8 @@ Initialize $\drow[r] \leftarrow r{+}1$, $\delta_{\mathrm{row}}[r] \leftarrow 0$ 
       $\delta_{\mathrm{row}}[r] \leftarrow \hat{\delta}_c + 1$\tcp*{depth follows swapped label, uses pre-swap value}
     }
     \Else(\tcp*[f]{Mismatch, no swap}){
-      $\delta_{\mathrm{col}}[c] \leftarrow \hat{\delta}_c + 1$; $\delta_{\mathrm{row}}[r] \leftarrow \hat{\delta}_r + 1$\;
+      $\delta_{\mathrm{col}}[c] \leftarrow \hat{\delta}_c + 1$;
+      $\delta_{\mathrm{row}}[r] \leftarrow \hat{\delta}_r + 1$\;
     }
     $\drow[r] \leftarrow \drow[r] + 1$\;
   }
@@ -232,18 +366,20 @@ Initialize $\drow[r] \leftarrow r{+}1$, $\delta_{\mathrm{row}}[r] \leftarrow 0$ 
 \end{algorithm}
 
 \noindent
-\textbf{Implementation note.}  In the mismatch-swap case (line~11--12), the depth assignments use the \emph{pre-swap} depth values $\hat{\delta}_r$ and $\hat{\delta}_c$ saved at line~5.  A na\"ive implementation that reads $\delta_{\mathrm{row}}[r]$ after the label swap has already written to $\delta_{\mathrm{col}}[c]$ would use corrupted values.  The temporary variables $\hat{d}$ and $\hat{\delta}$ resolve this.
+\textbf{Implementation note.}  In the mismatch-swap case (line~11--12), the depth assignments use the \emph{pre-swap} depth values $\hat{\delta}_r$ and $\hat{\delta}_c$ saved at line~5.
+A na\"ive implementation that reads $\delta_{\mathrm{row}}[r]$ after the label swap has already written to $\delta_{\mathrm{col}}[c]$ would use corrupted values.  The temporary variables $\hat{d}$ and $\hat{\delta}$ resolve this.
 
 The label rules are identical to the standard Krusche comb.
 Depth is a pure \emph{observer}: it does not affect any label
-comparison or update, so
+comparison or swap decision, so
 $\dcol^{\mathrm{augmented}} = \dcol^{\mathrm{standard}}$.
 
 The gap depth at the end of the comb encodes the consecutive
 mismatch history of each wire.  A depth of $\delta = 0$ means
 the wire most recently participated in a match---no gap is
 active.  A depth of $\delta = 1$ means exactly one mismatch has
-occurred since the last match: a gap has just opened, incurring
+occurred since the last match:
+a gap has just opened, incurring
 cost~$g_o$.  A depth of $\delta = k > 1$ means $k$ consecutive
 mismatches since the last match, with each step beyond the first
 contributing a marginal cost of~$g_e$.  Thus the depth directly
@@ -251,7 +387,7 @@ encodes the gap state that the affine penalty model requires:
 whether we are outside a gap, at the opening of one, or in
 its interior.
 
-\begin{figure}[ht]
+\begin{figure}[!htbp]
 \centering
 \input{figures/fig_augmented_comb}
 \caption{The augmented comb for $A = \texttt{AB}$,
@@ -282,16 +418,20 @@ By Theorem~\ref{thm:bijection}
 $(\dcol, \delta_{\mathrm{col}}, \drow,
 \delta_{\mathrm{row}})$ is in bijection with the expanded
 comb output $(\dcol_\nu, \drow_\nu)$ for
-$\nu = g_o + 1$.  The expanded distance column
+$\nu = g_o + 1$.
+The expanded distance column
 $\dcol_\nu$ determines all gap-penalized scores via the
 backward-reach formula on expanded
-strings~\cite{tiskin2022book}, giving~(i).  The full
+strings~\cite{tiskin2008semi}, giving~(i).
+The full
 expanded output $(\dcol_\nu, \drow_\nu)$ determines the
 expanded seaweed permutation by projection, which in turn
-determines the full expanded DP state; restricting to the
+determines the full expanded DP state;
+restricting to the
 original (non-sentinel) positions recovers the Gotoh state
 vectors $H[m][\cdot]$, $E[m][\cdot]$, $F[m][\cdot]$,
-giving~(ii).  Finally, the augmented output determines
+giving~(ii).
+Finally, the augmented output determines
 whether each wire last participated in a match
 ($\delta = 0$) or a mismatch run of specific length;
 combined with the label permutation, this recovers
@@ -302,10 +442,22 @@ giving~(iii).
 It remains to observe that the row vector~$\drow$ need not
 be supplied externally: after the comb completes,
 $\drow[r] = r + 1 + n$ for all~$r$, since every row label
-is incremented once per column.  Thus the triple
+is incremented once per column.
+Thus the triple
 $(\dcol, \delta_{\mathrm{col}},
 \delta_{\mathrm{row}})$ suffices.
 \end{proof}
+
+\begin{remark}[Semi-local scope]
+\label{rem:semi-local}
+Theorem~\ref{thm:score-determination} determines the \emph{semi-local}
+affine gap score (Definition~\ref{def:affine-gap}), where the reference
+endpoint is free.
+The standard global Gotoh score---where both endpoints
+are fixed and each $k$-gap costs $g_o + (k{-}1)g_e$---is a different
+quantity that the comb does not determine in general, since distinct
+LCS-optimal paths may incur different affine gap costs.
+\end{remark}
 
 \begin{proposition}[Minimal sufficient information]
 \label{prop:minimal-sufficient}
@@ -313,7 +465,8 @@ The triple
 $(\dcol, \delta_{\mathrm{col}}, \delta_{\mathrm{row}})$ is
 the minimal sufficient statistic among subsets of
 $\{\dcol, \delta_{\mathrm{col}}, \drow,
-\delta_{\mathrm{row}}\}$ for affine gap scores.  The
+\delta_{\mathrm{row}}\}$ for affine gap scores.
+The
 vector~$\drow$ is redundant.
 \end{proposition}
 
@@ -324,21 +477,22 @@ counterexample, using $m{=}4$, $n{=}8$, binary alphabet,
 $g_o{=}3$, $g_e{=}1$.
 
 Dropping $\delta_{\mathrm{row}}$: the pairs
-$(A_1, B_1) = (0110, 10101010)$ (score~$2$) and
-$(A_2, B_2) = (0010, 10101010)$ (score~$3$) yield
+$(A_1, B_1) = (0110,\allowbreak 10101010)$ (score~$2$) and
+$(A_2, B_2) = (0010,\allowbreak 10101010)$ (score~$3$) yield
 identical $(\dcol, \delta_{\mathrm{col}})$ but differ in
 $\delta_{\mathrm{row}}$.
 
 Dropping $\delta_{\mathrm{col}}$:
-$(A_1, B_1) = (0011, 10101010)$ (score~$2$) and
-$(A_2, B_2) = (0001, 10101010)$ (score~$3$) yield
+$(A_1, B_1) = (0011,\allowbreak 10101010)$ (score~$2$) and
+$(A_2, B_2) = (0001,\allowbreak 10101010)$ (score~$3$) yield
 identical $(\dcol, \drow)$ but differ in
 $\delta_{\mathrm{col}}$.
 
 Dropping $\dcol$: trivially necessary, since $\dcol$
 determines LCS scores, which differ across strings.
 
-Each of the three components is individually necessary; the
+Each of the three components is individually necessary;
+the
 triple is sufficient by
 Theorem~\ref{thm:score-determination}; hence it is minimal
 sufficient.
@@ -346,9 +500,12 @@ sufficient.
 
 \section{Algebraic Structure}\label{sec:algebra}
 
-We now identify the algebraic structure underlying the augmented
-comb.  The depth transformations form a monoid, and the combined
-label-plus-depth dynamics is captured by a wreath product.
+The composability of the distance column is what makes Tiskin's
+framework useful in pipelines.
+We now show that the augmented comb
+inherits this composability: the depth transformations form a monoid,
+and the combined label-plus-depth dynamics is captured by a wreath
+product with $\bigO(n \log n)$ composition.
 
 \begin{definition}[Affine monoid]
 \label{def:affine-monoid}
@@ -363,7 +520,8 @@ composition:
 The two types are:
 \emph{reset} $f_{0,b}(x) = b$ (wire matched, depth set to~$b$)
 and \emph{extend} $f_{1,b}(x) = x + b$ (wire accumulated $b$
-consecutive mismatches).  The identity element is $f_{1,0}$.
+consecutive mismatches).
+The identity element is $f_{1,0}$.
 \end{definition}
 
 The monoid laws (identity, associativity, composition
@@ -409,45 +567,55 @@ The label dynamics of the augmented comb are identical to the
 standard Krusche comb
 (Definition~\ref{def:augmented-comb}, remark following it):
 depth is a pure observer that does not affect any label
-comparison or swap decision.  Therefore
+comparison or swap decision.
+Therefore
 $\perm^{\mathrm{augmented}} = \perm^{\mathrm{standard}}$,
 and the map $A \mapsto \perm_{A,B}$ is a homomorphism into
 $\mathfrak{S}_{m+n}$ by the composability of Krusche distance
-columns~\cite{tiskin2022book}.
+columns~\cite{tiskin2008semi}.
 
 \emph{(b)~Affine action.}\enspace
 We show that each wire's accumulated depth transformation is an
-element of $\mathrm{Aff}(\mathbb{Z}_{\geq 0})$.  At each
+element of $\mathrm{Aff}(\mathbb{Z}_{\geq 0})$.
+At each
 cell~$(r,c)$, the depth of the wire passing through undergoes
 one of two elementary transformations
 (Definition~\ref{def:augmented-comb}):
 match ($a_r = b_c$) applies $f_{0,0}: \delta \mapsto 0$;
 mismatch ($a_r \ne b_c$) applies $f_{1,1}: \delta \mapsto
-\delta + 1$.  A wire traverses a sequence of cells,
+\delta + 1$.
+A wire traverses a sequence of cells,
 accumulating a composition of these elementary functions.
 Since $\mathrm{Aff}(\mathbb{Z}_{\geq 0})$ is closed under
 composition (Definition~\ref{def:affine-monoid}), the net
 transformation is $f_{a,b}$ for some $a \in \{0,1\}$,
-$b \in \mathbb{Z}_{\geq 0}$.  Specifically: if the wire's
+$b \in \mathbb{Z}_{\geq 0}$.
+Specifically: if the wire's
 last match occurred at cell $(r_k, c_k)$ and it subsequently
 traversed $b$ mismatch cells, the net function is $f_{0,b}$
 (the match resets depth to~$0$ and the $b$ subsequent
-mismatches each add~$1$); if the wire never matched, the net
+mismatches each add~$1$);
+if the wire never matched, the net
 function is $f_{1,b}$ where $b$ is the total number of
 mismatch cells traversed.
 
 \emph{(c)~Wreath product composition.}\enspace
 Consider the augmented comb for $A_1 \cdot A_2$ against~$B$,
-split at the boundary between the two halves.  Let
+split at the boundary between the two halves.
+Let
 $(\perm_1, \mathbf{f}_1)$ be the wreath product element for
-$A_1$ and $(\perm_2, \mathbf{f}_2)$ for~$A_2$.  At
+$A_1$ and $(\perm_2, \mathbf{f}_2)$ for~$A_2$.
+At
 position~$i$ in the output: the first half sends wire $i$ to
 position $\perm_1(i)$, applying depth transformation
-$\mathbf{f}_1(i)$; the second half receives a wire at position
-$\perm_1(i)$ and applies $\mathbf{f}_2(\perm_1(i))$.  The
+$\mathbf{f}_1(i)$;
+the second half receives a wire at position
+$\perm_1(i)$ and applies $\mathbf{f}_2(\perm_1(i))$.
+The
 total depth transformation at position~$i$ is therefore
 $\mathbf{f}_2(\perm_1(i)) \circ \mathbf{f}_1(i)$, and the
-total permutation is $\perm_2 \circ \perm_1$.  This is
+total permutation is $\perm_2 \circ \perm_1$.
+This is
 precisely the wreath product multiplication rule.
 \end{proof}
 
@@ -459,14 +627,16 @@ standard comb outputs.
 \label{thm:composition}
 Given augmented comb outputs for $A_1$ vs~$B$ and $A_2$
 vs~$B$, the composed output for $A_1 \cdot A_2$ vs~$B$ can be
-computed in $\bigO(n \log n)$ time.  The boundary transfer
+computed in $\bigO(n \log n)$ time.
+The boundary transfer
 requires $(\dcol, \delta_{\mathrm{col}})$---exactly $2n$
 integers.
 \end{theorem}
 
 \begin{proof}
 The permutation part composes via Tiskin's steady ant
-algorithm~\cite{tiskin2022book} in $\bigO(n \log n)$.  The
+algorithm~\cite{tiskin2008semi} in $\bigO(n \log n)$.
+The
 depth part composes by the wreath product rule
 (Theorem~\ref{thm:wreath}): each wire's affine function in the
 second half is applied to the depth produced by the first half
@@ -482,7 +652,7 @@ first segment), corrupting the gap depth information.
 
 Algorithm~\ref{alg:wreath-compose} makes the wreath product composition explicit.
 
-\begin{algorithm}[H]
+\begin{algorithm}[htbp]
 \caption{Wreath Product Composition}\label{alg:wreath-compose}
 \KwIn{Augmented outputs $(\perm_1, \mathbf{f}_1)$ for $A_1$ vs~$B$ and $(\perm_2, \mathbf{f}_2)$ for $A_2$ vs~$B$}
 \KwOut{Augmented output $(\perm, \mathbf{g})$ for $A_1 \cdot A_2$ vs~$B$}
@@ -502,7 +672,8 @@ $\perm \leftarrow \perm_2 \circ \perm_1$\;
 
 The augmented comb determines affine gap scores
 (Theorem~\ref{thm:score-determination}), but extracting the
-actual numeric score requires additional computation.  We now
+actual numeric score requires additional computation.
+We now
 establish bounds on this extraction cost.
 
 \begin{theorem}[Sharp boundary]
@@ -510,25 +681,31 @@ establish bounds on this extraction cost.
 For $g_o \geq m - 1$:
 $\mathrm{affine\_gap}(A, B[s{:}s{+}m])
   = \sum_{i=0}^{m-1} \mathbf{1}[a_i = b_{s+i}]$
-(the diagonal match count).  The bound is sharp: for
+(the diagonal match count).
+The bound is sharp: for
 $g_o = m - 2$, counterexamples exist.
 \end{theorem}
 
 \begin{proof}
 Consider any alignment of $A$ against $B[s{:}s{+}m]$ that
-introduces at least one gap.  Each gap opening costs at
-least~$g_o$, so the total gap penalty is at least~$g_o$.  The
+introduces at least one gap.
+Each gap opening costs at
+least~$g_o$, so the total gap penalty is at least~$g_o$.
+The
 gap-free diagonal alignment achieves
 $d = \sum_{i} \mathbf{1}[a_i = b_{s+i}]$ matches with zero gap
-cost.  Any gapped alignment can gain at most $m - d$ additional
-matches but pays at least~$g_o$.  Since
+cost.
+Any gapped alignment can gain at most $m - d$ additional
+matches but pays at least~$g_o$.
+Since
 $m - d \leq m - 1 \leq g_o$, the gap cost always exceeds or
 equals the maximum possible match improvement, so the diagonal
 is optimal.
 
 For sharpness, take $g_o = m - 2$ with
 $A = 0\,1 \cdots (m{-}1)$ and $B[s{:}s{+}m]$ the cyclic shift
-by one position, over an alphabet of size~$m$.  The diagonal
+by one position, over an alphabet of size~$m$.
+The diagonal
 scores~$0$, but shifting by one gives $m{-}1$ matches at cost
 $g_o = m{-}2$, for a net score of $(m{-}1) - (m{-}2) = 1 > 0$.
 \end{proof}
@@ -566,17 +743,21 @@ $\mathrm{gap\_score} = \sum \mathbf{1}[a_i = b_{s+i}]
 
 For part~(2), suppose $\varepsilon \leq g_o$.  The LCS alignment
 achieves $\LCS$ matches but requires $\varepsilon$ off-diagonal
-crossings, each opening a gap at cost at least~$g_o$.  Since the
+crossings, each opening a gap at cost at least~$g_o$.
+Since the
 LCS alignment is match-optimal, any rearrangement reducing gap
 openings below~$\varepsilon$ necessarily loses matches (otherwise
-the LCS would be higher).  Each off-diagonal crossing therefore
+the LCS would be higher).
+Each off-diagonal crossing therefore
 costs exactly one gap opening, and the gap-penalized score is
 $\LCS - \varepsilon$.
 
 For part~(3), consider $A_1 = \texttt{0010}$,
 $A_2 = \texttt{0100}$, $B = \texttt{00011}$ with
-$g_o = 2$, $g_e = 1$.  Both have $\LCS = 3$ and diagonal
-match count~$2$, giving $\varepsilon = 1$.  However, the
+$g_o = 2$, $g_e = 1$.
+Both have $\LCS = 3$ and diagonal
+match count~$2$, giving $\varepsilon = 1$.
+However, the
 Gotoh~DP gives $\mathrm{gap\_score}(A_1, B) = 3$ while
 $\mathrm{gap\_score}(A_2, B) = 2$, because $A_1$'s
 off-diagonal crossing can be absorbed into the diagonal
@@ -587,10 +768,12 @@ alignment without opening a new gap, while $A_2$'s cannot.
 \label{prop:band-sufficiency}
 Let $\varepsilon(s) = \LCS(A, B[s{:}s{+}m]) -
   \sum_{i=0}^{m-1} \mathbf{1}[a_i = b_{s+i}]$
-be the excess at window~$s$.  Then the optimal semi-global
+be the excess at window~$s$.
+Then the optimal semi-global
 Gotoh alignment ($g_o \geq 1$, $g_e \geq 1$, match~$= 1$,
 mismatch~$= 0$) has maximum deviation at most~$\varepsilon$
-from the main diagonal.  Consequently, the $\varepsilon$-banded
+from the main diagonal.
+Consequently, the $\varepsilon$-banded
 Gotoh~DP (computing only cells $(i,j)$ with $|i - j| \leq
 \varepsilon$) produces the exact optimal score in
 $\bigO(m \varepsilon)$ time.
@@ -598,12 +781,15 @@ $\bigO(m \varepsilon)$ time.
 
 \begin{proof}
 Let $P$ be any alignment path with maximum deviation
-$d = \max_k |i_k - j_k|$.  At the point of maximum deviation,
+$d = \max_k |i_k - j_k|$.
+At the point of maximum deviation,
 the path has consumed at least~$d$ more positions on one string
-than the other, requiring at least~$d$ gap positions.  Since
+than the other, requiring at least~$d$ gap positions.
+Since
 $g_e \geq 1$, the total gap penalty satisfies
 $\mathrm{gap}(P) \geq d$.  Any alignment's matches form a common
-subsequence, so $\mathrm{matches}(P) \leq \LCS$.  Therefore:
+subsequence, so $\mathrm{matches}(P) \leq \LCS$.
+Therefore:
 \[
   \mathrm{score}(P) = \mathrm{matches}(P) - \mathrm{gap}(P)
     \leq \LCS - d.
@@ -612,7 +798,8 @@ If $d > \varepsilon$, then
 $\mathrm{score}(P) < \LCS - \varepsilon
   = \sum_{i} \mathbf{1}[a_i = b_{s+i}]
   = \mathrm{score}(P_{\mathrm{diag}})$,
-so~$P$ is strictly suboptimal.  The optimal path therefore has
+so~$P$ is strictly suboptimal.
+The optimal path therefore has
 deviation $\leq \varepsilon$, and the banded~DP visits
 $\bigO(m \varepsilon)$ cells, each in $\bigO(1)$ time.
 \emph{Formally verified in Lean~4.}
@@ -639,18 +826,20 @@ where $\varepsilon$ is the excess
 \begin{proof}
 Step~(1) is $\bigO(m)$: the LCS at window~$s$ is computed from
 $\dcol$ in $\bigO(m)$, and the diagonal match count is a single
-pass over $m$ positions.  Step~(2) is $\bigO(1)$: a comparison
+pass over $m$ positions.
+Step~(2) is $\bigO(1)$: a comparison
 and subtraction.  Step~(3) is $\bigO(m\varepsilon)$ by
 Proposition~\ref{prop:band-sufficiency}: the optimal alignment
 has deviation at most~$\varepsilon$, so the $\varepsilon$-band
-contains the optimal path.  The total is
+contains the optimal path.
+The total is
 $\bigO(m\varepsilon)$, which is $\bigO(m)$ whenever
 $\varepsilon = \bigO(1)$.
 \end{proof}
 
 Algorithms~\ref{alg:extract-score} and~\ref{alg:banded-gotoh} provide complete pseudocode for the adaptive extraction scheme and the $\varepsilon$-banded fallback.
 
-\begin{algorithm}[H]
+\begin{algorithm}[htbp]
 \caption{Adaptive Score Extraction}\label{alg:extract-score}
 \KwIn{Distance column $\dcol$, sequences $A$ and $B$, window start~$s$, query length~$m$, gap-open~$g_o$, gap-extend~$g_e$}
 \KwOut{Affine gap score at window $[s,\, s{+}m)$}
@@ -671,7 +860,7 @@ $\varepsilon \leftarrow \ell - d$\;
 }
 \end{algorithm}
 
-\begin{algorithm}[H]
+\begin{algorithm}[htbp]
 \caption{$\varepsilon$-Banded Gotoh DP}\label{alg:banded-gotoh}
 \KwIn{Query $A[0..m{-}1]$, window $W[0..w{-}1]$, band width~$\varepsilon$, gap-open~$g_o$, gap-extend~$g_e$}
 \KwOut{Affine gap score (alignment path recoverable via traceback)}
@@ -699,43 +888,38 @@ Existence is guaranteed by
 Theorem~\ref{thm:score-determination}; the $\bigO(m^2)$
 match-matrix reconstruction is the current upper bound.
 
-Systematic investigation yields three negative results bounding
-this problem.  (1)~\textbf{No per-position decomposition:} the
-function $f$ cannot be written as $\sum_j h(j, \dcol[j],
-\delta_{\mathrm{col}}[j])$ for any~$h$, because the expanded
-crossing count at position~$j$ depends on crossing patterns at
-neighboring positions, not just the local values
-$(\dcol[j], \delta_{\mathrm{col}}[j])$.
-(2)~\textbf{No bounded-state scan:} the map from
-$(\dcol, \delta_{\mathrm{col}})$ to the expanded column vector
-$\dcol_\nu$ cannot be computed by a left-to-right scan with
-$\bigO(1)$ carry; the minimal carry state is the
-$2m$-dimensional expanded row vector $\drow_\nu$.
-(3)~\textbf{Intermediate state asymmetry:} although the final
-column state $(\dcol, \delta_{\mathrm{col}})$ determines
-$\dcol_\nu$ via the bijection, the intermediate row state
-$(\drow, \delta_{\mathrm{row}})$ does \emph{not} determine
-$\drow_\nu$---the expanded row vector has $m\nu$ entries
-encoding the full sentinel history, while
-$(\drow, \delta_{\mathrm{row}})$ provides only $2m$ values, a
-lossy projection when $\nu > 2$.
-
-These results suggest that worst-case $\bigO(m^2)$ extraction
-may be unavoidable for the affine gap model, consistent with the
-non-Monge structure of Section~\ref{sec:non-monge}.  However,
-Proposition~\ref{prop:band-sufficiency} provides an adaptive
-bypass: the $\varepsilon$-banded DP achieves exact extraction in
-$\bigO(m\varepsilon)$, and when $\varepsilon \leq g_o$ the
-extraction reduces to $\bigO(m)$
+Three negative results bound this problem:
+\begin{enumerate}
+  \item \textbf{No per-position decomposition.}
+    $f$ cannot be written as $\sum_j h(j, \dcol[j],
+    \delta_{\mathrm{col}}[j])$: the expanded crossing count at
+    position~$j$ depends on neighboring positions.
+  \item \textbf{No bounded-state scan.}
+    The map $(\dcol, \delta_{\mathrm{col}}) \to \dcol_\nu$
+    requires carry state of dimension~$2m$ (the expanded row
+    vector), not $\bigO(1)$.
+  \item \textbf{Intermediate state asymmetry.}
+    The final column state determines $\dcol_\nu$ via the
+    bijection, but the intermediate row state
+    $(\drow, \delta_{\mathrm{row}})$ does \emph{not} determine
+    $\drow_\nu$ when $\nu > 2$.
+\end{enumerate}
+These suggest that worst-case $\bigO(m^2)$ extraction may be
+unavoidable, consistent with the non-Monge structure of
+Section~\ref{sec:non-monge}.
+However, the $\varepsilon$-banded
+DP provides an adaptive bypass in $\bigO(m\varepsilon)$
 (Corollary~\ref{cor:adaptive-extraction}).
 \end{remark}
 
-The adaptive extraction (Corollary~\ref{cor:adaptive-extraction}) is exact for all inputs, but its practical utility depends on how often the excess $\varepsilon$ is small.  The following result provides a structural explanation.
+The adaptive extraction (Corollary~\ref{cor:adaptive-extraction}) is exact for all inputs, but its practical utility depends on how often the excess $\varepsilon$ is small.
+The following result provides a structural explanation.
 
 \begin{proposition}[Tropical collapse under monotone parameters]
 \label{prop:tropical-collapse}
 Let $c_0, c_1, \dots, c_{m-1}$ be the Gotoh row transformation
-parameters (Proposition~\ref{prop:tropical-matrix}).  If
+parameters (Proposition~\ref{prop:tropical-matrix}).
+If
 $c_0 \leq c_1 \leq \cdots \leq c_{m-1}$ (monotone
 non-decreasing) and $g_o \geq 1$, $g_e \geq 1$, then the
 $m$-step tropical matrix product trivializes: the Gotoh DP value
@@ -745,9 +929,11 @@ reduces to diagonal scoring.
 
 \begin{proof}
 We show by induction that the invariant $H_j = c_j$ and
-$F_j \leq c_j - 1$ is maintained at each step.  At column~$j$,
+$F_j \leq c_j - 1$ is maintained at each step.
+At column~$j$,
 the propagated state is
-$p_j = \max(H_{j-1} - g_o,\, F_{j-1} - g_e)$.  Under the
+$p_j = \max(H_{j-1} - g_o,\, F_{j-1} - g_e)$.
+Under the
 invariant: $H_{j-1} - g_o = c_{j-1} - g_o \leq c_{j-1} - 1$
 (since $g_o \geq 1$), and
 $F_{j-1} - g_e \leq (c_{j-1} - 1) - 1 = c_{j-1} - 2$, so
@@ -767,28 +953,56 @@ the correction formula
 (Proposition~\ref{prop:excess-correction}): when the excess
 $\varepsilon$ is small, the parameters $c_j$ are nearly
 monotone, and the Gotoh DP is dominated by the diagonal
-alignment.  Empirically, $\varepsilon = 0$ implies perfect
+alignment.
+Empirically, $\varepsilon = 0$ implies perfect
 monotonicity (100\% of tested cases), $\varepsilon = 1$
 gives 98\%, and the degradation is gradual ($\varepsilon \geq 5$
 gives approximately 60\%).
 
+\begin{proposition}[Excess bounds]
+\label{prop:excess-bounds}
+\begin{enumerate}
+  \item $\varepsilon \leq |\{(i, j) : a_i = b_{s+j},\; i \neq j\}|$
+    (off-diagonal matchable positions).
+  \item For reference decomposition $B = B_1 B_2$, the excess
+    satisfies $\varepsilon(B) \geq \varepsilon(B_1) + \varepsilon(B_2)$
+    (super-additivity).
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+Part~(1): any LCS alignment achieving $\varepsilon$ off-diagonal
+matches must place each on a distinct off-diagonal position $(i,j)$
+with $a_i = b_{s+j}$ and $i \neq j$, so $\varepsilon$ is bounded
+by the number of such positions.
+Part~(2): restricting an LCS alignment of~$A$ against~$B$ to each
+reference half yields valid common subsequences.
+Diagonal matches
+are additive over the split, while the global LCS is super-additive,
+so the excess $\varepsilon = \LCS - \mathrm{diag}$ is super-additive.
+\end{proof}
+
 \section{Non-Monge Structure}\label{sec:non-monge}
 
 The augmented comb provides an affine gap framework via the
-wreath product rather than via Monge structure.  We now show
+wreath product rather than via Monge structure.
+We now show
 this is necessary: Monge structure is fundamentally absent.
 
 \begin{theorem}[Non-Monge structure of affine gap]
 \label{thm:non-monge}
 The semi-local affine gap score matrix
 $S(i,j) = \mathrm{affine\_gap}(A[i{:}], B[{:}j])$ is neither
-Monge nor unit-Monge, even for $m{=}2$.  This contrasts with
+Monge nor unit-Monge, even for $m{=}2$.
+This contrasts with
 LCS, where $S$ is always unit-Monge.
 \end{theorem}
 
 \begin{proof}
-We exhibit a counterexample.  Let $A = 01$, $B = 0001$,
-$g_o = 3$, $g_e = 1$.  The semi-local score matrix
+We exhibit a counterexample.
+Let $A = 01$, $B = 0001$,
+$g_o = 3$, $g_e = 1$.
+The semi-local score matrix
 $S(i,j) = \mathrm{affine\_gap}(A[i{:}], B[{:}j])$
 for $(i,j) \in \{0,1,2\} \times \{0,1,2,3,4\}$ is:
 \[
@@ -800,7 +1014,8 @@ for $(i,j) \in \{0,1,2\} \times \{0,1,2,3,4\}$ is:
 \]
 The Monge condition requires
 $S(i_1, j_1) + S(i_2, j_2) \leq S(i_1, j_2) + S(i_2, j_1)$
-for $i_1 < i_2$, $j_1 < j_2$.  Taking
+for $i_1 < i_2$, $j_1 < j_2$.
+Taking
 $(i_1, i_2, j_1, j_2) = (0, 1, 0, 1)$:
 \[
   S(0,0) + S(1,1) = 0 + 0 = 0,
@@ -812,7 +1027,8 @@ deficit $0 - (-2) = 2 > 0$.
 
 For LCS under the same strings, the corresponding matrix has
 row-adjacent differences in $\{0, -1\}$, confirming unit-Monge
-structure.  The structural reason is that gap penalties cause the
+structure.
+The structural reason is that gap penalties cause the
 score matrix to lose the unit step property: the $2{\times}2$
 subdensities can exceed~$1$.
 \end{proof}
@@ -839,16 +1055,27 @@ These matrices compose via tropical multiplication, but the
 resulting semigroup is infinite and lacks Monge structure.
 \end{proposition}
 
+\begin{proof}
+The Gotoh recurrence at column~$j$ updates the state vector
+$(H_j, F_j, 1)$ via
+$H_j = \max(F_j, c)$, $F_j = \max(H_{j-1} - g_o, F_{j-1} - g_e)$,
+which is tropical-linear with the stated matrix.
+The semigroup is infinite because the parameter~$c$ varies
+freely, and the products do not collapse to a finite set.
+\end{proof}
+
 \section{Relationship to Sentinel Blow-Up}\label{sec:blowup}
 
 The augmented comb (Section~\ref{sec:augmented}) and the sentinel
 blow-up both resolve the insufficiency of plain distance vectors
-for gap-penalized scoring.  We now show they are informationally
+for gap-penalized scoring.
+We now show they are informationally
 equivalent.
 
 \begin{definition}[Sentinel blow-up]
 \label{def:blowup}
-Given gap penalty $g \ge 1$, define $\nu = g + 1$.  The
+Given gap penalty $g \ge 1$, define $\nu = g + 1$.
+The
 \emph{sentinel blow-up} replaces each character~$c$ with the
 string $\$^g c$, where $\$ \notin \Sigma$ is a fresh sentinel.
 The \emph{expanded distance column}
@@ -867,7 +1094,8 @@ output:
   (\dcol_\nu^{\mathrm{expanded}}, \drow_\nu^{\mathrm{expanded}}).
 \]
 The augmented representation uses $2(m{+}n)$ values; the blow-up
-uses $\nu(m{+}n)$.  For $g_o = 3$: the augmented comb achieves
+uses $\nu(m{+}n)$.
+For $g_o = 3$: the augmented comb achieves
 $2{\times}$ overhead versus $4{\times}$ for blow-up.
 \end{theorem}
 
@@ -878,9 +1106,11 @@ inverses.
 \emph{Forward: augmented $\to$ expanded.}\enspace
 Consider the augmented comb on strings $A$, $B$ and the standard
 comb on the blown-up strings $A' = \$^g a_0 \$^g a_1 \cdots$
-and $B' = \$^g b_0 \$^g b_1 \cdots$.  The blown-up comb
+and $B' = \$^g b_0 \$^g b_1 \cdots$.
+The blown-up comb
 operates on $\nu(m{+}n)$ wires, grouped into $\nu$-tuples per
-original position.  Within each group, the $g$ sentinel
+original position.
+Within each group, the $g$ sentinel
 sub-positions interact deterministically ($\$$ matches $\$$ on
 both sides, producing structural crossings that depend only on
 relative wire ordering), while the content sub-position interacts
@@ -888,9 +1118,18 @@ based on character equality ($a_r = b_c$), replicating the
 original match/mismatch pattern.
 
 The sentinel crossing pattern at position~$j$ encodes exactly the
-gap depth $\delta_{\mathrm{col}}[j]$: each additional mismatch
-produces exactly one additional sentinel crossing, and matches
-reset the sentinel pattern.  This encoding is injective, so the
+gap depth $\delta_{\mathrm{col}}[j]$.
+To see this: at a match
+($a_r = b_c$), all $\nu$ sub-wires in the group swap together,
+resetting the sentinel crossing count to zero.
+At a mismatch,
+the $g$ sentinel sub-wires see $\$ \ne b_c$ (or $a_r \ne \$$)
+and one additional pair crosses, incrementing the count by
+exactly one.
+After $\delta$ consecutive mismatches, the sentinel
+crossing count is $\min(\delta, g) = \delta$ (since
+$\delta \leq m < \nu$ for meaningful inputs).
+This encoding is injective, so the
 map $(\dcol, \delta_{\mathrm{col}}, \drow,
 \delta_{\mathrm{row}}) \mapsto (\dcol_\nu, \drow_\nu)$ is
 well-defined and injective.
@@ -902,7 +1141,8 @@ $\dcol[j] = \lfloor \dcol_\nu[j\nu + g] / \nu \rfloor$.
 Extract the gap depth by reading the $g$ sentinel entries
 $\dcol_\nu[j\nu], \dots, \dcol_\nu[j\nu+g-1]$: the sentinel
 crossing count at position~$j$ equals the consecutive mismatch
-count $\delta_{\mathrm{col}}[j]$.  Row vectors
+count $\delta_{\mathrm{col}}[j]$.
+Row vectors
 $(\drow, \delta_{\mathrm{row}})$ are recovered analogously from
 $\drow_\nu$.
 
@@ -912,22 +1152,27 @@ into the $\nu$ entries of $\dcol_\nu[j\nu{:}(j{+}1)\nu]$.
 The backward map reads these $\nu$ entries to recover
 $(\dcol[j], \delta_{\mathrm{col}}[j])$.  Position-locality makes
 the round-trip verification decompose into independent checks per
-position~$j$.  Fix any $j$ and let $d = \dcol[j]$,
-$\delta = \delta_{\mathrm{col}}[j]$.  The forward map produces
+position~$j$.
+Fix any $j$ and let $d = \dcol[j]$,
+$\delta = \delta_{\mathrm{col}}[j]$.
+The forward map produces
 the $\nu$-tuple where the content entry is $d \cdot \nu + g$ and
 the $g$ sentinel entries encode $\min(\delta, g)$ structural
-crossings.  The backward map extracts
+crossings.
+The backward map extracts
 $d = \lfloor \dcol_\nu[j\nu{+}g] / \nu \rfloor$ and reads
-$\delta$ from the sentinel crossing count.  Since
+$\delta$ from the sentinel crossing count.
+Since
 $\delta \mapsto \text{sentinel pattern}$ is injective (each
 mismatch adds exactly one crossing, match resets to zero), the
-backward map recovers $(d, \delta)$ exactly.  The same argument
+backward map recovers $(d, \delta)$ exactly.
+The same argument
 applies to the row side by symmetry.
 \end{proof}
 
-\begin{figure}[ht]
+\begin{figure}[!htbp]
 \centering
-\input{figures/fig_blowup}
+\resizebox{\linewidth}{!}{\input{figures/fig_blowup}}
 \caption{The sentinel blow-up bijection ($g{=}1$, $\nu{=}2$).}
 \label{fig:blowup}
 \end{figure}
@@ -935,9 +1180,11 @@ applies to the row side by symmetry.
 \begin{proposition}[Column-only bijection]
 \label{prop:col-bijection}
 The column state alone suffices: $(\dcol, \delta_{\mathrm{col}})$
-determines $\dcol_\nu$ with zero ambiguity.  The row vectors
+determines $\dcol_\nu$ with zero ambiguity.
+The row vectors
 $\drow$ and $\delta_{\mathrm{row}}$ are not required for
-reconstructing the expanded distance column.  Furthermore, the
+reconstructing the expanded distance column.
+Furthermore, the
 map is \emph{prefix-computable}: the prefix
 $\dcol_\nu[0{:}\nu(j{+}1)]$ is determined by
 $(\dcol[0{:}j{+}1], \delta_{\mathrm{col}}[0{:}j{+}1])$.
@@ -948,7 +1195,8 @@ This follows from the position-locality of the bijection in
 Theorem~\ref{thm:bijection}: the $\nu$ expanded entries
 $\dcol_\nu[j\nu{:}(j{+}1)\nu]$ depend only on the column-side
 values $(\dcol[j], \delta_{\mathrm{col}}[j])$, not on any row
-information.  The prefix-computability is immediate: the first
+information.
+The prefix-computability is immediate: the first
 $\nu(j{+}1)$ entries of $\dcol_\nu$ involve only positions
 $0, 1, \dots, j$.
 \end{proof}
@@ -956,12 +1204,14 @@ $0, 1, \dots, j$.
 The plain distance column $\dcol$ records, for each reference
 position~$j$, the number of query wires whose crossing pattern
 reaches back to~$j$---a crossing count that does not distinguish
-which wire crossed.  The expanded distance column $\dcol_\nu$
+which wire crossed.
+The expanded distance column $\dcol_\nu$
 adds \emph{match identity} via interleaved sentinel and content
 crossings: sentinel sub-positions produce structural crossings
 that encode the \emph{position} of a match within the alignment,
 while content sub-positions produce conditional crossings
-encoding character equality.  This interleaved pattern lets
+encoding character equality.
+This interleaved pattern lets
 $\dcol_\nu$ distinguish ``wire~$i$ matched $b_j$ via
 character~$c$'' from ``wire~$i'$ displaced wire~$i$ at
 position~$j$ without a character match.''  The plain vectors
@@ -970,7 +1220,8 @@ and this merging is precisely the information loss that prevents
 gap score recovery from $(\dcol, \drow)$ alone.
 
 The gap depth counter is the compressed encoding of the same
-match identity information.  The sentinel sub-wires implicitly
+match identity information.
+The sentinel sub-wires implicitly
 count consecutive mismatches through their structural crossing
 pattern; the depth counter tracks the same quantity explicitly.
 The $\nu^2$ cost of sentinel expansion is the price of encoding
@@ -981,15 +1232,18 @@ crossing pattern.
 \label{prop:identity}
 The expanded distance column $\dcol_\nu$ and the distance pair
 $(\dcol, \drow)$ are informationally equivalent for LCS scoring
-on the original (unexpanded) strings.  However, $\dcol_\nu$
+on the original (unexpanded) strings.
+However, $\dcol_\nu$
 encodes strictly more information for gap-penalized alignment.
 \end{proposition}
 
 \begin{proof}
 \emph{LCS equivalence.}\enspace  With $g = 0$ (no gap penalty),
-$\nu = 1$ and $\dcol_\nu = \dcol$.  LCS scores depend only on
+$\nu = 1$ and $\dcol_\nu = \dcol$.
+LCS scores depend only on
 $\dcol$, and the row distances $\drow$ are determined by $\dcol$
-up to the conservation constraint.  Thus $\dcol_\nu$ and
+up to the conservation constraint.
+Thus $\dcol_\nu$ and
 $(\dcol, \drow)$ determine exactly the same LCS information.
 
 \emph{Strict separation.}\enspace  The counterexample from
@@ -997,7 +1251,8 @@ Section~\ref{sec:extraction}---identical $(\dcol, \drow)$ but
 distinct affine gap scores---yields distinct expanded distance
 columns $\dcol_\nu$ under the $g{=}1$ blow-up ($\nu{=}2$),
 because the sentinel sub-positions encode distinct match
-identities.  The bijection of Theorem~\ref{thm:bijection}
+identities.
+The bijection of Theorem~\ref{thm:bijection}
 guarantees that distinct augmented outputs (hence distinct gap
 structures) always produce distinct $\dcol_\nu$.
 \end{proof}
@@ -1006,9 +1261,11 @@ The augmented comb build and composition are independent of the
 gap penalty parameters $(g_o, g_e)$: the depth counter tracks
 consecutive mismatches regardless of how those mismatches are
 later penalized, so a single computation supports score
-extraction under any affine gap model.  By contrast, the sentinel
+extraction under any affine gap model.
+By contrast, the sentinel
 blow-up must be recomputed for each value of~$g$ at
-$\bigO(mn\nu^2)$ cost per setting.  Furthermore, the augmented
+$\bigO(mn\nu^2)$ cost per setting.
+Furthermore, the augmented
 comb stores $\dcol[j] \in [0, m]$ and
 $\delta_{\mathrm{col}}[j] \in [0, m]$, both fitting in uint8 for
 $m \leq 255$ regardless of~$g$, while the blow-up requires
@@ -1017,73 +1274,60 @@ $m\nu \leq 255$---giving maximum probe lengths of 127 ($g{=}1$),
 
 \section{Conclusion}\label{sec:conclusion}
 
-The augmented seaweed comb extends Tiskin's semi-local string comparison framework to affine gap alignment.  The central positive result is that the augmented output $(\dcol, \delta_{\mathrm{col}}, \delta_{\mathrm{row}})$---three vectors totaling $2(m{+}n)$ integers---determines the complete Gotoh DP state with zero ambiguity, and composition via the wreath product $\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$ retains $\bigO(n \log n)$ complexity.  The exact bijection with the sentinel blow-up (Theorem~\ref{thm:bijection}) establishes informational equivalence at $2\times$ versus $\nu\times$ storage, independent of the gap penalty.  On the negative side, the non-Monge structure of the semi-local affine gap score matrix (Theorem~\ref{thm:non-monge}) confirms that the wreath product is necessary: the standard Tiskin framework based on unit-Monge composition does not extend to gap-penalized scoring.
+\begin{sloppypar}
+The augmented seaweed comb extends Tiskin's semi-local string
+comparison framework to affine gap alignment.
+The central positive result is that the augmented output
+$(\dcol, \delta_{\mathrm{col}}, \delta_{\mathrm{row}})$---three
+vectors totaling $2(m{+}n)$ integers---determines the complete
+Gotoh DP state exactly, and composition via the wreath product
+$\mathfrak{S}_{m+n} \wr \mathrm{Aff}(\mathbb{Z}_{\geq 0})$
+retains $\bigO(n \log n)$ complexity.
+The exact bijection with the sentinel blow-up
+(Theorem~\ref{thm:bijection}) establishes informational
+equivalence at constant storage overhead, independent of the gap
+penalty.  On the negative side, the non-Monge structure of the
+semi-local affine gap score matrix
+(Theorem~\ref{thm:non-monge}) confirms that the wreath product
+is necessary: the standard Tiskin framework based on unit-Monge
+composition does not extend to gap-penalized scoring.
 
-The principal remaining question is the score extraction formula.  The map from augmented output to affine gap score exists (Theorem~\ref{thm:score-determination}), and the adaptive $\varepsilon$-banded DP achieves $\bigO(m\varepsilon)$ extraction (Corollary~\ref{cor:adaptive-extraction}), but a closed-form $\bigO(m)$ formula remains open (Remark~\ref{rem:open-problem}).  The three negative results on extraction---no per-position decomposition, no bounded-state scan, and intermediate state asymmetry---suggest that the $\bigO(m^2)$ match-matrix reconstruction may be the best worst-case bound, though the adaptive scheme is $\bigO(m)$ whenever the excess $\varepsilon$ is bounded.  An $\bigO(m)$ formula would make the augmented comb strictly superior to the blow-up for all operations.
+The principal remaining question is the score extraction formula.
+The map from augmented output to affine gap score exists
+(Theorem~\ref{thm:score-determination}), and the adaptive
+$\varepsilon$-banded DP achieves $\bigO(m\varepsilon)$ extraction
+(Corollary~\ref{cor:adaptive-extraction}), but a closed-form
+$\bigO(m)$ formula remains open
+(Remark~\ref{rem:open-problem}).  The three negative results on
+extraction suggest that $\bigO(m^2)$ may be the best worst-case
+bound, though the adaptive scheme is $\bigO(m)$ whenever
+$\varepsilon$ is bounded.
+An $\bigO(m)$ formula would make the augmented comb strictly superior to the blow-up for all operations.
 
-Parallel composition on GPU architectures could exploit the wreath product structure for further speedups, since the pointwise affine application is embarrassingly parallel.  Extension to compressed strings, following the framework of Tiskin~\cite{tiskin2022book}, is a natural next step.
+We note that the augmented comb determines the \emph{semi-local} affine gap score (Remark~\ref{rem:semi-local});
+the standard global Gotoh score, where both endpoints are fixed, is a different quantity not determined by the comb in general.
+For practical alignment pipelines, the augmented comb can replace the per-window $\bigO(m^2)$ Gotoh DP currently used by seed-and-extend aligners, scoring all windows from a single $\bigO(mn)$ comb build with $\bigO(m\varepsilon)$ adaptive extraction per window.
+Parallel composition on GPU architectures could exploit the wreath product structure for further speedups, since the pointwise affine application is embarrassingly parallel.
+Bridging the semi-local score to the standard global Gotoh DP---where both endpoints are fixed and each $k$-gap costs $g_o + (k{-}1)g_e$---remains open; the comb does not encode which gap arrangement minimizes the full affine penalty.
 
 \paragraph{Formal verification.}
-The algebraic framework is formalized in Lean~4 with Mathlib, comprising
-304 theorems and lemmas across 20 files.
-The formally verified components include:
-the affine monoid structure (Definition~\ref{def:affine-monoid}),
-the wreath product homomorphism (Theorem~\ref{thm:wreath}),
-the composition law (Theorem~\ref{thm:composition}),
-the non-Monge counterexample (Theorem~\ref{thm:non-monge}),
-$\varepsilon$-band sufficiency (Proposition~\ref{prop:band-sufficiency}),
-the tropical collapse (Proposition~\ref{prop:tropical-collapse}),
-the correction formula tiers (Proposition~\ref{prop:excess-correction}),
-path separation (the score--path distinction underlying the
-$\bigO(m\varepsilon)$ extraction),
-and the column-recursive/fold equivalence for the Gotoh~DP
-(proved via fold decomposition with step extraction, head invariants,
-and \texttt{getD\_reverse}).
-Fourteen \texttt{sorry} declarations remain across two files,
-reduced from four original independent proof obligations.
-In \texttt{CrossingCountLCS.lean}, two declarations use \texttt{sorry}:
-\texttt{drow\_processRow} and \texttt{colSimInv\_step}.
-The key insight is a new invariant \texttt{DRowProp}:
-$\mathtt{d\_row\_k} > j \iff \mathit{dp\_new}[j] = \mathit{dp\_old}[j]$,
-which consolidates the three original sub-goals (match,
-mismatch-with-swap, mismatch-with-stay) into a single root cause.
-\texttt{DRowProp} is verified exhaustively (1.25~million cases,
-zero failures).  The inductive infrastructure is complete:
-DP prefix locality (\texttt{lcsDpRow\_getD\_prefix}), per-position
-\texttt{CombEncodes}, and the \texttt{DRowProp} invariant statement are
-all proved; only the formal Lean proof connecting \texttt{DRowProp}
-maintenance through \texttt{processRow} and the three cell-level
-bridge lemmas remain open.
-In \texttt{ScoreDetermination.lean}, the original monolithic sorry for
-$\mathrm{gotohGlobalScore} \le \mathrm{diagCount}$ when
-$\varepsilon \le g_o$ has been decomposed into a complete proof
-architecture with a sorry-free proof body.  The key discovery is that
-$\varepsilon$ is non-decreasing along the diagonal: at a match, both
-LCS and diagonal count increase by one; at a mismatch, LCS may increase
-but diagonal count does not.  Therefore
-$\varepsilon(\text{prefix } k) \le \varepsilon(\text{full})$ for all~$k$,
-which combined with the hypothesis $\varepsilon \le g_o$ yields prefix-level
-bounds that close the diagonal induction.  The twelve remaining helper
-\texttt{sorry} declarations are standard DP/list properties (LCS
-monotonicity, match extension, unit increase, mutual Gotoh/LCS bound)
-each requiring 20--80 lines of Lean formalization.
-All unproved statements are verified exhaustively by testing
-(1.25~million and 174{,}000+ cases respectively with zero failures).
+All theorems and propositions in this paper are formalized in
+Lean~4 with Mathlib across 24 sorry-free files covering the
+augmented comb, wreath product algebra, score extraction,
+non-Monge structure, and the sentinel blow-up bijection.
+A companion file explores the semi-local to standard global
+bridge; three open proof obligations there confirm that this
+connection lies beyond the augmented comb's scope.
+\end{sloppypar}
 
 \begin{thebibliography}{99}
 
 \bibitem{tiskin2006semi}
 A.~Tiskin.
-\newblock All semi-local longest common subsequences in subquadratic time.
-\newblock In \emph{Proc.\ CSR 2006}, LNCS 3967, pp.~405--416. Springer, 2006.
+\newblock Semi-local longest common subsequences in subquadratic time.
+\newblock \emph{Journal of Discrete Algorithms}, 6(4):570--581, 2008.
 
 \bibitem{tiskin2008semi}
-A.~Tiskin.
-\newblock Semi-local string comparison: Algorithmic techniques and
-  applications.
-\newblock \emph{Mathematics in Computer Science}, 1(4):571--603, 2008.
-
-\bibitem{tiskin2022book}
 A.~Tiskin.
 \newblock Semi-local string comparison: Algorithmic techniques and
   applications.
@@ -1094,10 +1338,10 @@ A.~Tiskin.
 \newblock Bounded-length {S}mith-{W}aterman alignment.
 \newblock In \emph{Proc.\ WABI 2019}, LIPIcs 143, pp.~16:1--16:12, 2019.
 
-\bibitem{krusche2010phd}
-P.~Krusche.
-\newblock \emph{Parallel String Alignments: Algorithms and Applications}.
-\newblock PhD thesis, University of Warwick, 2010.
+\bibitem{krusche2010spaa}
+P.~Krusche and A.~Tiskin.
+\newblock New algorithms for efficient parallel string comparison.
+\newblock In \emph{Proc.\ 22nd ACM SPAA}, pp.~209--216. ACM, 2010.
 
 \bibitem{krusche2009plots}
 P.~Krusche and A.~Tiskin.
@@ -1156,6 +1400,23 @@ P.~Gawrychowski, E.~Gorbachev, and T.~Kociumaka.
   and applications.
 \newblock In \emph{Proc.\ ESA 2025}, LIPIcs 351, pp.~74:1--74:14. 2025.
   arXiv:2408.04613.
+
+\bibitem{li2018minimap2}
+H.~Li.
+\newblock Minimap2: pairwise alignment for nucleotide sequences.
+\newblock \emph{Bioinformatics}, 34(18):3094--3100, 2018.
+  arXiv:1708.01492.
+
+\bibitem{dobin2013star}
+A.~Dobin, C.~A. Davis, F.~Schlesinger, J.~Drenkow, C.~Zaleski,
+  S.~Jha, P.~Batut, M.~Chaisson, and T.~R. Gingeras.
+\newblock {STAR}: ultrafast universal {RNA}-seq aligner.
+\newblock \emph{Bioinformatics}, 29(1):15--21, 2013.
+
+\bibitem{buchfink2015diamond}
+B.~Buchfink, C.~Xie, and D.~H. Huson.
+\newblock Fast and sensitive protein alignment using {DIAMOND}.
+\newblock \emph{Nature Methods}, 12:59--60, 2015.
 
 \end{thebibliography}
 

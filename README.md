@@ -1,8 +1,8 @@
-# Semi-Local Affine Gap Scoring via Augmented Seaweed Combs
+# Augmented Semi-Local String Comparison: Algorithms and Applications
 
 Companion repository for the paper:
 
-> **Semi-Local Affine Gap Scoring via Augmented Seaweed Combs**
+> **Augmented Semi-Local String Comparison: Algorithms and Applications**
 > Gong Chen
 
 **Paper:** [`paper/paper.pdf`](paper/paper.pdf)
