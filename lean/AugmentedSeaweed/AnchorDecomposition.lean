@@ -5,11 +5,10 @@
 
   Results:
   - Spec 01: lcsDP a b ≤ charOverlapBI a b  (sorry-free)
-  - Spec 03: epsilon ≤ offDiagMatchable      (sorry-free, conditional on 2 hypotheses:
-      diagCount = diagCountSum, charOverlapBI ≤ charOverlap — both verified computationally)
+  - Spec 01': lcs_le_charOverlap             (sorry-free, via charOverlapBI bridge)
+  - Spec 03: epsilon ≤ offDiagMatchable      (sorry-free, unconditional)
 
-  Sorry status: 0 sorrys. All theorems sorry-free.
-  Remaining hypothesis: diagCount = diagCountSum in epsilon_le_offDiagMatchable.
+  Sorry status: 0 sorrys. All theorems sorry-free, no hypotheses.
 
   Proof of Spec 01: 2D induction on (k, j) using lcsAfterK infrastructure,
   bounding dp[k][j] by ((↑(a.take k) : Multiset) ∩ ↑(b.take j)).card.
@@ -283,6 +282,56 @@ example : diagCount [0,1] [1,0] = diagCountSum [0,1] [1,0] := by native_decide
 example : diagCount [0,1,0] [0,1,0] = diagCountSum [0,1,0] [0,1,0] := by native_decide
 example : diagCount [0,1,0,1] [1,0,1,0] = diagCountSum [0,1,0,1] [1,0,1,0] := by native_decide
 
+/-! ### diagCount = diagCountSum (Formally) -/
+
+private theorem countP_range_as_finset (n : ℕ) (p : ℕ → Bool) :
+    (List.range n).countP p = (Finset.range n).sum (fun i => if p i then 1 else 0) := by
+  induction n with
+  | zero => simp
+  | succ n ih =>
+    rw [List.range_succ, List.countP_append, ih,
+        List.countP_cons, List.countP_nil, Finset.sum_range_succ]
+    split <;> omega
+
+/-- Pointwise: [a==b] = Σ_c [a==c ∧ b==c] over any finset containing a. -/
+private theorem pointwise_diag_eq (ai bi : ℕ) (S : Finset ℕ) (hai : ai ∈ S) :
+    (if (ai == bi) = true then (1 : ℕ) else 0) =
+    S.sum (fun c => if (ai == c && bi == c) = true then 1 else 0) := by
+  simp only [beq_iff_eq, Bool.and_eq_true]
+  by_cases h : ai = bi
+  · subst h; simp only [ite_true]
+    rw [Finset.sum_eq_single ai]
+    · simp
+    · intro c _ hc; simp [hc.symm]
+    · intro habs; exact absurd hai habs
+  · rw [if_neg h]; symm; apply Finset.sum_eq_zero
+    intro c _; rw [if_neg]; push_neg; intro h1; exact Ne.symm (h1 ▸ h)
+
+private theorem getD_mem' (l : List ℕ) (i : ℕ) (hi : i < l.length) : l.getD i 0 ∈ l := by
+  have : l.getD i 0 = l[i] := by unfold List.getD; simp [List.getElem?_eq_getElem hi]
+  rw [this]; exact List.getElem_mem hi
+
+/-- diagCount = diagCountSum: counting matches = summing per-character matches.
+    Proof by Finset.sum_comm (swap Σ_i Σ_c). -/
+theorem diagCount_eq_diagCountSum (a b : List ℕ) :
+    diagCount a b = diagCountSum a b := by
+  unfold diagCount diagCountSum diagCountChar
+  rw [countP_range_as_finset]
+  rw [← List.foldl_map,
+      show List.foldl HAdd.hAdd 0 _ = (List.map _ (a ++ b).dedup).sum from
+        List.sum_eq_foldl.symm,
+      ← List.sum_toFinset _ (List.nodup_dedup _)]
+  conv_rhs =>
+    rw [show (a ++ b).dedup.toFinset = (a ++ b).toFinset from by ext x; simp]
+    arg 2; ext c; rw [countP_range_as_finset]
+  rw [Finset.sum_comm]
+  apply Finset.sum_congr rfl
+  intro i hi
+  simp only [Finset.mem_range] at hi
+  exact pointwise_diag_eq (a.getD i 0) (b.getD i 0) _ (by
+    simp only [List.mem_toFinset, List.mem_append]
+    left; exact getD_mem' a i (hi.trans_le (Nat.min_le_left _ _)))
+
 /-- charOverlap decomposes as offDiagMatchable + diagCountSum.
     From foldl_add_decompose with f = min(count_a, count_b),
     g = min - diagCountChar, h = diagCountChar. -/
@@ -326,14 +375,13 @@ theorem charOverlapBI_le_charOverlap (a b : List ℕ) :
     exact List.mem_append_left b (List.bagInter_sublist_left.subset hc)
   · intro _ _ _; exact Nat.zero_le _
 
-/-- Main theorem (Spec 03): epsilon ≤ offDiagMatchable.
-    Chain: epsilon ≤ charOverlap - diag = offDiagMatchable + diagCountSum - diag.
-    When diagCountSum = diagCount: = offDiagMatchable. -/
-theorem epsilon_le_offDiagMatchable (a b : List ℕ)
-    (h_diag : diagCount a b = diagCountSum a b) :
+/-- Main theorem (Spec 03): epsilon ≤ offDiagMatchable. Sorry-free.
+    Chain: epsilon ≤ charOverlap - diag = offDiagMatchable + diagCountSum - diag = offDiagMatchable. -/
+theorem epsilon_le_offDiagMatchable (a b : List ℕ) :
     epsilon a b ≤ (offDiagMatchable a b : ℤ) := by
   have h1 := epsilon_le_charOverlapBI_sub_diag a b
   have h_bi := charOverlapBI_le_charOverlap a b
+  have h_diag := diagCount_eq_diagCountSum a b
   have h3 := charOverlap_eq_offDiag_plus_diagSum a b
   unfold epsilon at *
   calc (lcsDP a b : ℤ) - ↑(diagCount a b)
@@ -343,3 +391,10 @@ theorem epsilon_le_offDiagMatchable (a b : List ℕ)
     _ = ↑(offDiagMatchable a b + diagCountSum a b) - ↑(diagCount a b) := by rw [h3]
     _ = ↑(offDiagMatchable a b) + ↑(diagCountSum a b) - ↑(diagCount a b) := by push_cast; ring_nf
     _ = ↑(offDiagMatchable a b) := by rw [← h_diag]; omega
+
+/-! ## Combined Results -/
+
+/-- Spec 01 (charOverlap version): LCS ≤ Σ_c min(count_a, count_b). -/
+theorem lcs_le_charOverlap (a b : List ℕ) :
+    lcsDP a b ≤ charOverlap a b :=
+  le_trans (lcsDP_le_charOverlapBI a b) (charOverlapBI_le_charOverlap a b)

@@ -21,3 +21,5 @@ import AugmentedSeaweed.ScoreDetermination
 import AugmentedSeaweed.TropicalCollapse
 import AugmentedSeaweed.WreathComposition
 import AugmentedSeaweed.AnchorDecomposition
+import AugmentedSeaweed.AdditivityBound
+import AugmentedSeaweed.AnchorSoundness
